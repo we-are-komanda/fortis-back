@@ -1,0 +1,11 @@
+.idea
+/var/config/config.local.yml
+
+# IDE
+.vscode/
+
+# Task analysis and planning files
+tasks/
+
+# OpenCode configuration
+.opencode/

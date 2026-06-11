@@ -1,0 +1,35 @@
+run:
+  timeout: 5m
+linters:
+  enable:
+    - bodyclose
+    - dogsled
+    - dupl
+    - dupword
+    - errcheck
+    - exhaustive
+    - gochecknoinits
+    - gocritic
+    - gocyclo
+    - goprintffuncname
+    - gosimple
+    - ineffassign
+    - misspell
+    - nakedret
+    - noctx
+    - staticcheck
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+    - govet
+    - copyloopvar
+    - intrange
+    - testifylint
+    - spancheck
+    - durationcheck
+    - errorlint
+    - predeclared
+    - promlinter
+    - protogetter

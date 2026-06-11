@@ -1,0 +1,30 @@
+up:
+	docker-compose up -d --build
+
+start:
+	docker-compose up -d
+
+stop:
+	docker-compose stop
+
+down:
+	docker-compose down --remove-orphans
+
+run:
+	go run .
+
+down-force:
+	docker-compose down --remove-orphans -v
+
+test-unit:
+	go test -v -cover -tags=unit ./...
+
+diff-test-check:
+	mkdir -p report
+	pip install 'diff_cover==3.0.1'
+	go test -coverpkg=$(go list ./... | grep -E "domain|repository" | tr '\n' ',' | sed 's/,$//') -v -tags=unit -coverprofile=coverage.out ./...
+	go tool cover -func coverage.out
+	go tool cover -html=coverage.out -o report/coverage.html
+	gocover-cobertura < coverage.out > report/Cobertura.xml
+	sed -i -- "s#filename=\"$(notdir $(shell pwd))/#filename=\"#g" report/Cobertura.xml
+	diff-cover report/Cobertura.xml

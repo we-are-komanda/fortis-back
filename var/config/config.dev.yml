@@ -1,0 +1,22 @@
+work_mode:
+postgres:
+  host:
+  user:
+  password:
+  dbname: app
+  port:
+access:
+  retry: 3
+  auth_url: ''
+  validity_endpoint: ''
+  whitelist:
+    - '^/_/[a-z]+$'
+cors:
+  enable: true
+  allow_credentials: true
+  origin_regex: true
+  allow_origins: [ 'localhost(:[0-9]+)?$' ]
+  allow_methods: [ 'GET', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE' ]
+  allow_headers: [ 'Content-Type', 'Authorization' ]
+  expose_headers: [ 'Link' ]
+  max_age: 3600

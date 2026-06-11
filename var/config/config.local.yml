@@ -1,0 +1,22 @@
+work_mode: webapp
+postgres:
+  host: localhost
+  user: postgres
+  password: postgres
+  dbname: app
+  port: 8032
+access:
+  retry: 3
+  auth_url: 'http://localhost:8090/auth'
+  validity_endpoint: 'http://localhost:8090/api/v1/token_validate'
+  whitelist:
+    - '^/_/[a-z]+$'
+cors:
+  enable: true
+  allow_credentials: true
+  origin_regex: true
+  allow_origins: [ 'localhost(:[0-9]+)?$' ]
+  allow_methods: [ 'GET', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE' ]
+  allow_headers: [ 'Content-Type', 'Authorization' ]
+  expose_headers: [ 'Link' ]
+  max_age: 3600

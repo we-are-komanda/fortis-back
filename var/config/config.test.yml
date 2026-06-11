@@ -1,0 +1,22 @@
+work_mode: webapp
+postgres:
+  host: db
+  user: postgres
+  password: postgres
+  dbname: app
+  port: 5432
+access:
+  retry: 3
+  auth_url: ''
+  validity_endpoint: ''
+  whitelist:
+    - '^/_/[a-z]+$'
+cors:
+  enable: true
+  allow_credentials: true
+  origin_regex: true
+  allow_origins: [ 'localhost(:[0-9]+)?$' ]
+  allow_methods: [ 'GET', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE' ]
+  allow_headers: [ 'Content-Type', 'Authorization' ]
+  expose_headers: [ 'Link' ]
+  max_age: 3600

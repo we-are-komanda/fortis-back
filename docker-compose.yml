@@ -1,0 +1,54 @@
+---
+version: '3.5'
+
+services:
+
+  postgres:
+    container_name: postgres
+    hostname: postgres
+    image: postgres:17
+    restart: 'no'
+    ports:
+      - 8032:5432
+    environment:
+      TZ: "UTC"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1"]
+      start_period: 5s
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    networks:
+      - app
+  app:
+    container_name: app
+    hostname: app
+    restart: 'no'
+    build:
+      context: .
+      dockerfile: Dockerfile
+    #entrypoint: tail -f /dev/null
+    ports:
+      - 8080:8090
+    environment:
+      TZ: "UTC"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app
+
+volumes:
+  postgres:
+    name: postgres
+
+networks:
+  app:
+    name: app
