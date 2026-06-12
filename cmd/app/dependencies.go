@@ -1,17 +1,22 @@
 package main
 
 import (
-	"github.com/fortis/backend/internal/modules/platform/application"
+	"github.com/fortis/backend/internal/db"
+	defenseApp "github.com/fortis/backend/internal/modules/defense_project/application"
+	defenseInfra "github.com/fortis/backend/internal/modules/defense_project/infrastructure"
+	defenseUi "github.com/fortis/backend/internal/modules/defense_project/ui"
+	platformApp "github.com/fortis/backend/internal/modules/platform/application"
 	"github.com/fortis/backend/internal/modules/platform/infrastructure"
 	platformUi "github.com/fortis/backend/internal/modules/platform/ui"
 	"github.com/fortis/backend/internal/probe"
+	"github.com/fortis/backend/internal/rdbms"
 )
 
 //go:cover off
 func (app *Application) provideDependencies() {
 	err := app.container.Provide(platformUi.NewExampleController)
 	processError(err)
-	err = app.container.Provide(application.NewStatusService)
+	err = app.container.Provide(platformApp.NewStatusService)
 	processError(err)
 	err = app.container.Provide(infrastructure.NewStatusRepository)
 	processError(err)
@@ -22,6 +27,18 @@ func (app *Application) provideDependencies() {
 			*probe.NewCompositeCheckService(),
 			*probe.NewCompositeCheckService(),
 		)
+	})
+	processError(err)
+
+	// DefenseProject module
+	err = app.container.Provide(defenseUi.NewDefenseProjectController)
+	processError(err)
+	err = app.container.Provide(defenseApp.NewDefenseProjectService)
+	processError(err)
+	err = app.container.Provide(defenseInfra.NewDefenseProjectRepository)
+	processError(err)
+	err = app.container.Provide(func(database *db.DataBase) rdbms.Executor {
+		return database.GormORM
 	})
 	processError(err)
 }
