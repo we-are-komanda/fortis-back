@@ -11,13 +11,16 @@ down:
 	docker-compose down --remove-orphans
 
 run:
-	go run .
+	go run ./cmd/app/
 
 down-force:
 	docker-compose down --remove-orphans -v
 
 test-unit:
 	go test -v -cover -tags=unit ./...
+
+swagger:
+	swagger generate spec -o swagger.json --scan-models
 
 diff-test-check:
 	mkdir -p report

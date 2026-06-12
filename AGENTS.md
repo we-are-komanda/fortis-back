@@ -1,5 +1,34 @@
 # AI Agents Project Instructions
 
+This project follows standard Go project layout:
+
+```
+cmd/app/              — точка входа (main, router, DI)
+internal/             — приватный код
+├── config/           — чтение YAML + ENV (префикс APP_)
+├── db/               — GORM + миграции
+├── middleware/        — CORS, JWT, Swagger, Prometheus, Content-Type
+├── metrics/          — Prometheus-метрики
+├── probe/            — Liveness/Readiness/Startup probes
+├── rdbms/            — GORM wrapper (executer, tx, pg)
+└── modules/          — DDD-модули
+    └── platform/     — пример модуля
+pkg/                  — публичные библиотеки (handlers/response, handlers/validator)
+config/               — YAML-конфиги по средам
+migrations/           — SQL-миграции
+tests/                — не-unit тесты
+├── integration/      — //go:build integration
+└── e2e/              — //go:build e2e
+```
+
+Каждый модуль в `internal/modules/{name}/` содержит свои слои:
+```
+domain/           — модели, интерфейсы репозиториев, ошибки
+application/      — сервисы (use cases)
+infrastructure/   — GORM-модели, реализации репозиториев
+ui/               — контроллеры, DTO, мапперы
+```
+
 This project is developed using Domain-Driven Design (DDD) principles.
 
 ## Architectural Guidelines
@@ -85,11 +114,11 @@ Skipping layers (e.g. Domain -> UI) is strictly forbidden. The Application layer
 - Interfaces are defined only at architectural boundaries.
 - Dependencies must always point inward.
 - Context must be passed explicitly.
-- Use `ErrorHandler` from `handlers` package for error responses.
+- Use `ErrorHandler` from `pkg/handlers` package for error responses.
 - For IDs we use UUID.
 - Always check README.md file for project description.
 - Always check code syntax and run build after changes.
-- When creating something new (services, repositories, controllers, etc.), it MUST be registered in `dependencies.go` for Dependency Injection (DI).
+- When creating something new (services, repositories, controllers, etc.), it MUST be registered in `cmd/app/dependencies.go` for Dependency Injection (DI).
 - Repository interfaces go in `domain/{domain}_repository_interface.go`.
 - Commands and Queries go in `application/commands.go`.
 - GORM models go in `infrastructure/models.go`.
@@ -100,6 +129,8 @@ Skipping layers (e.g. Domain -> UI) is strictly forbidden. The Application layer
 - One migration file per domain (up + down), not one per table.
 - Include proper foreign keys, CASCADE deletes, and indexes.
 - Do not use meaningless comments.
+- Config передавать по частям, не целиком. Конструктор принимает только нужный подконфиг: `config.Cors`, `config.Access`, `config.Postgres`.
+- В DI регистрировать подконфиги отдельно: `app.container.Provide(func() config.Cors { return cnf.Cors })`. Это упрощает тестирование — не нужно собирать весь `*config.Config`.
 
 ## HTTP Status Codes
 
@@ -143,6 +174,39 @@ Use appropriate HTTP status codes for different error types:
 - Always use `context.Context` in repository interface methods (even if some older code doesn't).
 - The `rdbms.Executor` interface supports `WithContext(ctx)` and `Transaction()`.
 - Use `rdbms.TxStorage` / `rdbms.Tx` for transactional storage patterns with generics.
+
+## Testing
+
+### Unit-тесты (рядом с кодом)
+
+Файлы `*_test.go` в той же директории, что и production-код. Пакет `testing` + `testify/assert` или `testify/suite`.
+Build tag `//go:build unit` — опционально, для фильтрации быстрых тестов.
+
+```bash
+make test-unit   # go test -v -cover -tags=unit ./...
+```
+
+Что тестировать:
+- **domain** — чистая бизнес-логика, без зависимостей
+- **application** — сервисы с mock-репозиторием (реализовать интерфейс в тесте или testify/mock)
+- **ui** — контроллер через `fasthttp.RequestCtx` с фейковым сервисом
+- **infrastructure** — только если есть изолируемая логика (не БД)
+
+### Integration-тесты (tests/integration/)
+
+Build tag `//go:build integration`. Реальная БД (testcontainers или внешний хост).
+
+```bash
+go test -tags=integration ./tests/integration/...
+```
+
+### E2E-тесты (tests/e2e/)
+
+Build tag `//go:build e2e`. Полные HTTP-запросы к запущенному серверу.
+
+```bash
+go test -tags=e2e ./tests/e2e/...
+```
 
 ## Branch Workflow
 

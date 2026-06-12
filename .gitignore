@@ -1,11 +1,41 @@
-.idea
-/var/config/config.local.yml
-
 # IDE
+.idea
 .vscode/
+
+# Local env files
+.env
+.env.local
+
+# Local config overrides (per-developer)
+/config/config.local.yml
+
+# Docker Compose local overrides
+docker-compose.override.yml
 
 # Task analysis and planning files
 tasks/
 
 # OpenCode configuration
 .opencode/
+
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+app-cmd
+
+# Test binaries
+*.test
+
+# Generated swagger specs
+swagger.json
+openapi3.json
+
+# Coverage artifacts
+coverage.out
+report/
+
+# Vendor (not used)
+vendor/

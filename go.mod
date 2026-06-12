@@ -1,8 +1,8 @@
 module github.com/fortis/backend
 
-go 1.22.0
+go 1.24
 
-toolchain go1.23.4
+toolchain go1.24.3
 
 require (
 	github.com/fasthttp/router v1.5.3
