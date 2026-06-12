@@ -22,6 +22,9 @@ test-unit:
 install-hooks:
 	git config core.hooksPath .githooks/
 
+lint-install:
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+
 swagger:
 	swagger generate spec -o swagger.json --scan-models
 

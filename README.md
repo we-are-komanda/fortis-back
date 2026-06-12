@@ -117,10 +117,13 @@ SQL-миграции в `migrations/`. Формат: `{timestamp}_{name}.up.sql`
 ## Линтер
 
 ```bash
-golangci-lint run
+make lint-install        # установить golangci-lint v1.64.8
+golangci-lint run        # запустить
 ```
 
-Настройка — `.golangci.yml` (35 линтеров).
+Настройка — `.golangci.yml` (19 линтеров).  
+Версия линтера зафиксирована: **golangci-lint v1.64.8** (совместимость с Go 1.24.3).  
+Pre-commit хук запускает линтер автоматически (`.githooks/pre-commit`).
 
 ## Docker
 

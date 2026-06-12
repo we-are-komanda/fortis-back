@@ -175,6 +175,14 @@ Use appropriate HTTP status codes for different error types:
 - The `rdbms.Executor` interface supports `WithContext(ctx)` and `Transaction()`.
 - Use `rdbms.TxStorage` / `rdbms.Tx` for transactional storage patterns with generics.
 
+## Toolchain
+
+| Инструмент | Версия | Установка |
+|---|---|---|
+| Go | 1.24.3 | `go.mod` (toolchain) |
+| golangci-lint | v1.64.8 | `make lint-install` |
+| Swagger | v0.32.3 | Dockerfile (build stage) |
+
 ## Testing
 
 ### Unit-тесты (рядом с кодом)
