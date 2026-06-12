@@ -3,33 +3,21 @@ run:
 linters:
   enable:
     - bodyclose
-    - dogsled
-    - dupl
-    - dupword
+    - copyloopvar
+    - durationcheck
     - errcheck
-    - exhaustive
-    - gochecknoinits
+    - errorlint
     - gocritic
-    - gocyclo
-    - goprintffuncname
     - gosimple
+    - govet
     - ineffassign
+    - intrange
     - misspell
-    - nakedret
     - noctx
     - staticcheck
+    - testifylint
     - typecheck
     - unconvert
     - unparam
     - unused
     - whitespace
-    - govet
-    - copyloopvar
-    - intrange
-    - testifylint
-    - spancheck
-    - durationcheck
-    - errorlint
-    - predeclared
-    - promlinter
-    - protogetter

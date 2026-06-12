@@ -54,11 +54,14 @@ func (app *Application) registerTechUrls(r *router.Router) error {
 }
 
 func (app *Application) registerCoreDependencies() {
-	app.container.Provide(func() config.Cors { return cnf.Cors })
-	app.container.Provide(func() config.Access { return cnf.Access })
-	app.container.Provide(func() config.Postgres { return cnf.Postgres })
+	err := app.container.Provide(func() config.Cors { return cnf.Cors })
+	processError(err)
+	err = app.container.Provide(func() config.Access { return cnf.Access })
+	processError(err)
+	err = app.container.Provide(func() config.Postgres { return cnf.Postgres })
+	processError(err)
 
-	err := app.container.Provide(middleware.NewCors)
+	err = app.container.Provide(middleware.NewCors)
 	processError(err)
 	err = app.container.Provide(middleware.NewAccess)
 	processError(err)

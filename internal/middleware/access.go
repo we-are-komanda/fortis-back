@@ -1,12 +1,14 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"github.com/valyala/fasthttp"
 	"github.com/fortis/backend/internal/config"
 	"log/slog"
 	"net/http"
 	"regexp"
+	"time"
 )
 
 type Access struct {
@@ -42,8 +44,17 @@ func (middleware *Access) Process(next fasthttp.RequestHandler) fasthttp.Request
 			return
 		}
 
-		for i := 0; i < middleware.cfg.ReTry; i++ {
-			response, err := http.Get(fmt.Sprintf("%s?token=%s", middleware.cfg.ValidityEndpoint, token))
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		for range middleware.cfg.ReTry {
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+				fmt.Sprintf("%s?token=%s", middleware.cfg.ValidityEndpoint, token), nil)
+			if err != nil {
+				slog.Error(fmt.Sprintf("Ошибка создания запроса валидации токена: %v", err))
+				continue
+			}
+			response, err := http.DefaultClient.Do(req)
 			if err != nil {
 				slog.Error(fmt.Sprintf("Ошибка выполнения запроса валидации токена: %v", err))
 				continue

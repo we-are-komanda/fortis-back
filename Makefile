@@ -19,6 +19,9 @@ down-force:
 test-unit:
 	go test -v -cover -tags=unit ./...
 
+install-hooks:
+	git config core.hooksPath githooks/
+
 swagger:
 	swagger generate spec -o swagger.json --scan-models
 

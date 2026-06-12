@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+
+if [ -n "$SKIP_HOOKS" ]; then
+  exit 0
+fi
+
+echo "--- Pre-commit: linting..."
+golangci-lint run --timeout=5m
+echo "OK"
+
+echo "--- Pre-commit: unit tests..."
+go test -tags=unit ./...
+echo "OK"
+
+echo "--- Pre-commit: build..."
+go build ./...
+echo "OK"

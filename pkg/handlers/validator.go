@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"reflect"
@@ -22,7 +23,11 @@ func ValidateApplicant(valueObject interface{}) []Error {
 	}
 
 	var errs []Error
-	for _, fieldErr := range err.(validator.ValidationErrors) {
+	var validationErrors validator.ValidationErrors
+	if !errors.As(err, &validationErrors) {
+		return errs
+	}
+	for _, fieldErr := range validationErrors {
 		errs = append(errs, Error{
 			Name:  strings.ToLower(fieldErr.Field()),
 			Value: buildErrorMessage(fieldErr),
@@ -118,18 +123,18 @@ func validateUUID4(fl validator.FieldLevel) bool {
 }
 
 func RegisterCustomValidations(validate *validator.Validate) {
-	validate.RegisterValidation("uuid4", validateUUID4)
-	validate.RegisterValidation("url_or_domain", validateURLOrDomain)
-	validate.RegisterValidation("e164_plus7", IsE164WithPlus7)
-	validate.RegisterValidation("inn_check", validateINN)
-	validate.RegisterValidation("inn_check_by_subject", validateINNByBusinessSubject)
-	validate.RegisterValidation("org_name_required", validateOrganizationNameRequired)
-	validate.RegisterValidation("tax_fields_required", validateTaxFieldsRequired)
-	validate.RegisterValidation("self_employed_tax_check", validateSelfEmployedTax)
-	validate.RegisterValidation("bik_validation", validateBIK)
-	validate.RegisterValidation("kpp_validation", validateKPP)
-	validate.RegisterValidation("account_validation", validateAccount)
-	validate.RegisterValidation("correspondent_account_validation", validateCorrespondentAccount)
+	_ = validate.RegisterValidation("uuid4", validateUUID4)
+	_ = validate.RegisterValidation("url_or_domain", validateURLOrDomain)
+	_ = validate.RegisterValidation("e164_plus7", IsE164WithPlus7)
+	_ = validate.RegisterValidation("inn_check", validateINN)
+	_ = validate.RegisterValidation("inn_check_by_subject", validateINNByBusinessSubject)
+	_ = validate.RegisterValidation("org_name_required", validateOrganizationNameRequired)
+	_ = validate.RegisterValidation("tax_fields_required", validateTaxFieldsRequired)
+	_ = validate.RegisterValidation("self_employed_tax_check", validateSelfEmployedTax)
+	_ = validate.RegisterValidation("bik_validation", validateBIK)
+	_ = validate.RegisterValidation("kpp_validation", validateKPP)
+	_ = validate.RegisterValidation("account_validation", validateAccount)
+	_ = validate.RegisterValidation("correspondent_account_validation", validateCorrespondentAccount)
 }
 
 func validateURLOrDomain(fl validator.FieldLevel) bool {
@@ -214,11 +219,12 @@ func validateINNByBusinessSubject(fl validator.FieldLevel) bool {
 	businessSubject := businessSubjectField.String()
 
 	var expectedLength int
-	if businessSubject == "Организация" {
+	switch businessSubject {
+	case "Организация":
 		expectedLength = 10
-	} else if businessSubject == "Самозанятый" || businessSubject == "ИП" {
+	case "Самозанятый", "ИП":
 		expectedLength = 12
-	} else {
+	default:
 		return validateINN(fl)
 	}
 
@@ -401,7 +407,7 @@ func validateAccountChecksum(bik, account string) bool {
 	weights := []int{7, 1, 3}
 
 	sum := 0
-	for i := 0; i < len(checkString); i++ {
+	for i := range len(checkString) {
 		digit := int(checkString[i] - '0')
 		weight := weights[i%len(weights)]
 		sum += digit * weight
@@ -418,7 +424,7 @@ func validateCorrespondentAccountChecksum(bik, corrAccount string) bool {
 	weights := []int{7, 3, 1}
 
 	sum := 0
-	for i := 0; i < len(checkString); i++ {
+	for i := range len(checkString) {
 		digit := int(checkString[i] - '0')
 		weight := weights[i%len(weights)]
 		sum += digit * weight

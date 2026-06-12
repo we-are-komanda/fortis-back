@@ -58,7 +58,6 @@ func (middleware *Cors) Process(next fasthttp.RequestHandler) fasthttp.RequestHa
 
 		next(ctx)
 	}
-
 }
 
 func (middleware *Cors) setCorsHeaders(ctx *fasthttp.RequestCtx, origin string) {

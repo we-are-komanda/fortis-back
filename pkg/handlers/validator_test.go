@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/go-playground/validator/v10"
@@ -308,7 +309,8 @@ func TestValidateSelfEmployedTax(t *testing.T) {
 }
 
 func containsFieldError(err error, fieldName string) bool {
-	if validationErrs, ok := err.(validator.ValidationErrors); ok {
+	var validationErrs validator.ValidationErrors
+	if errors.As(err, &validationErrs) {
 		for _, validationErr := range validationErrs {
 			if validationErr.Field() == fieldName {
 				return true
