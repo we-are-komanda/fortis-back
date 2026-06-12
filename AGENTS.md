@@ -235,3 +235,9 @@ This file contains **project-level architectural guidelines and conventions only
 - OpenCode configuration details (custom commands, subagent prompts, plugin setup).
 
 If you discover something useful that is not project-wide, put it in your own agent configuration or skill files.
+
+## Route Parameters
+
+- Path parameters (`/api/v1/resource/{id}/action`) **не используются**. ID и другие идентификаторы передаются через **query-параметры** (`/api/v1/resource/action?id=xxx`).
+- Контроллер читает query-параметры через `ctx.QueryArgs().Peek("paramName")`.
+- Query-параметры должны быть описаны в структуре DTO в `ui/dto.go` для генерации swagger-спецификации.
