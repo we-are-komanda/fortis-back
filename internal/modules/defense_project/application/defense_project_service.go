@@ -15,6 +15,8 @@ import (
 type importPayload struct {
 	SchemaVersion    int                      `json:"schemaVersion"`
 	ProjectID        string                   `json:"projectId"`
+	Name             string                   `json:"name,omitempty"`
+	EnterpriseID     string                   `json:"enterpriseId,omitempty"`
 	ProjectName      string                   `json:"projectName"`
 	BaseObject       importProtectedObject    `json:"baseObject"`
 	Layers           []importEditableLayer    `json:"layers"`
@@ -90,7 +92,7 @@ type importAsset struct {
 	IconURL                *string  `json:"iconUrl,omitempty"`
 	ModelURL               *string  `json:"modelUrl,omitempty"`
 	Score                  *int     `json:"score,omitempty"`
-	Priority               *int     `json:"priority,omitempty"`
+	Priority               *string  `json:"priority,omitempty"`
 	Tags                   []string `json:"tags,omitempty"`
 	LegacyItemID           *string  `json:"legacyItemId,omitempty"`
 	CalculatorAssetID      *string  `json:"calculatorAssetId,omitempty"`
@@ -127,6 +129,67 @@ func NewDefenseProjectService(repo domain.DefenseProjectRepositoryInterface) *De
 	return &DefenseProjectService{
 		repo: repo,
 	}
+}
+
+// CreateFromJSON создаёт проект из JSON с заданным именем конфигурации и enterpriseID.
+func (s *DefenseProjectService) CreateFromJSON(ctx context.Context, name, enterpriseID, rawJSON string) (*domain.DefenseProject, error) {
+	if name == "" {
+		return nil, domain.ErrInvalidConfigName
+	}
+
+	var payload importPayload
+	if err := json.Unmarshal([]byte(rawJSON), &payload); err != nil {
+		return nil, fmt.Errorf("unmarshal project json: %w", err)
+	}
+
+	if payload.SchemaVersion != domain.SchemaVersion {
+		return nil, domain.ErrInvalidSchemaVersion
+	}
+
+	if payload.ProjectName == "" {
+		return nil, fmt.Errorf("projectName: %w", domain.ErrInvalidProjectData)
+	}
+
+	projectID := uuid.New().String()
+
+	mode := domain.DefenseProjectModeView
+	if payload.Mode != "" {
+		mode = domain.DefenseProjectMode(payload.Mode)
+	}
+
+	source := domain.DefenseProjectSourceCustom
+	if payload.Source != "" {
+		source = domain.DefenseProjectSource(payload.Source)
+	}
+
+	now := time.Now().UTC()
+
+	project, err := domain.NewDefenseProject(
+		projectID, name, enterpriseID, payload.ProjectName,
+		domain.NewProtectedObject(
+			payload.BaseObject.ID,
+			payload.BaseObject.Name,
+			domain.NewCoordinates(payload.BaseObject.Center.Lat, payload.BaseObject.Center.Lng),
+		),
+		mapImportLayers(payload.Layers),
+		mapImportAssets(payload.AssetLibrary),
+		mapImportPlacedObjects(payload.PlacedObjects),
+		payload.ActiveLayerID,
+		payload.SelectedAssetID,
+		payload.SelectedObjectID,
+		mode, source,
+		payload.BasePresetID,
+		now,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.repo.Save(ctx, project); err != nil {
+		return nil, fmt.Errorf("save project: %w", err)
+	}
+
+	return project, nil
 }
 
 // Import выполняет импорт проекта из JSON.
@@ -167,6 +230,8 @@ func (s *DefenseProjectService) Import(ctx context.Context, rawJSON string) (*do
 
 	project, err := domain.NewDefenseProject(
 		projectID,
+		payload.Name,
+		payload.EnterpriseID,
 		payload.ProjectName,
 		domain.NewProtectedObject(
 			payload.BaseObject.ID,
@@ -196,6 +261,72 @@ func (s *DefenseProjectService) Import(ctx context.Context, rawJSON string) (*do
 	return project, nil
 }
 
+// CreateProject создаёт новый проект с заданным именем и enterpriseID.
+func (s *DefenseProjectService) CreateProject(ctx context.Context, name, enterpriseID, projectName string, baseObject domain.ProtectedObject, layers []domain.EditableDefenseLayer, assets []domain.DefenseAsset, placedObjects []domain.PlacedDefenseObject, mode domain.DefenseProjectMode, source domain.DefenseProjectSource, basePresetID *string) (*domain.DefenseProject, error) {
+	if name == "" {
+		return nil, domain.ErrInvalidConfigName
+	}
+
+	now := time.Now().UTC()
+	projectID := uuid.New().String()
+
+	project, err := domain.NewDefenseProject(
+		projectID, name, enterpriseID, projectName,
+		baseObject, layers, assets, placedObjects,
+		nil, nil, nil,
+		mode, source, basePresetID,
+		now,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.repo.Save(ctx, project); err != nil {
+		return nil, fmt.Errorf("save project: %w", err)
+	}
+
+	return project, nil
+}
+
+// ListProjects возвращает список проектов с пагинацией.
+func (s *DefenseProjectService) ListProjects(ctx context.Context, enterpriseID string, limit, offset int) ([]*domain.DefenseProject, int64, error) {
+	if enterpriseID != "" {
+		return s.repo.FindAllByEnterprise(ctx, enterpriseID, limit, offset)
+	}
+	return s.repo.FindAll(ctx, limit, offset)
+}
+
+// GetProject возвращает проект по ID.
+func (s *DefenseProjectService) GetProject(ctx context.Context, id string) (*domain.DefenseProject, error) {
+	return s.repo.FindByID(ctx, id)
+}
+
+// UpdateProject обновляет имя и enterpriseID существующего проекта.
+func (s *DefenseProjectService) UpdateProject(ctx context.Context, id, name, enterpriseID string) (*domain.DefenseProject, error) {
+	project, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if name != "" {
+		project.SetName(name)
+	}
+	if enterpriseID != "" {
+		project.SetEnterpriseID(enterpriseID)
+	}
+
+	if err := s.repo.Save(ctx, project); err != nil {
+		return nil, fmt.Errorf("save project: %w", err)
+	}
+
+	return project, nil
+}
+
+// DeleteProject удаляет проект по ID.
+func (s *DefenseProjectService) DeleteProject(ctx context.Context, id string) error {
+	return s.repo.Delete(ctx, id)
+}
+
 // Export выполняет экспорт проекта в JSON.
 func (s *DefenseProjectService) Export(ctx context.Context, projectID string) (string, error) {
 	project, err := s.repo.FindByID(ctx, projectID)
@@ -217,6 +348,8 @@ func serializeProject(project *domain.DefenseProject) (string, error) {
 	data := exportPayload{
 		SchemaVersion: project.SchemaVersion(),
 		ProjectID:     project.ProjectID(),
+		Name:          project.Name(),
+		EnterpriseID:  project.EnterpriseID(),
 		ProjectName:   project.ProjectName(),
 		BaseObject: exportProtectedObject{
 			ID:   project.BaseObject().ID(),
@@ -250,6 +383,8 @@ func serializeProject(project *domain.DefenseProject) (string, error) {
 type exportPayload struct {
 	SchemaVersion    int                    `json:"schemaVersion"`
 	ProjectID        string                 `json:"projectId"`
+	Name             string                 `json:"name,omitempty"`
+	EnterpriseID     string                 `json:"enterpriseId,omitempty"`
 	ProjectName      string                 `json:"projectName"`
 	BaseObject       exportProtectedObject  `json:"baseObject"`
 	Layers           []exportLayer          `json:"layers"`
@@ -325,7 +460,7 @@ type exportAsset struct {
 	IconURL                *string  `json:"iconUrl,omitempty"`
 	ModelURL               *string  `json:"modelUrl,omitempty"`
 	Score                  *int     `json:"score,omitempty"`
-	Priority               *int     `json:"priority,omitempty"`
+	Priority               *string  `json:"priority,omitempty"`
 	Tags                   []string `json:"tags,omitempty"`
 	LegacyItemID           *string  `json:"legacyItemId,omitempty"`
 	CalculatorAssetID      *string  `json:"calculatorAssetId,omitempty"`
@@ -549,9 +684,9 @@ func exportAssets(assets []domain.DefenseAsset) []exportAsset {
 			compatTypes[j] = string(t)
 		}
 
-		var priority *int
+		var priority *string
 		if p := a.Priority(); p != nil {
-			v := int(*p)
+			v := string(*p)
 			priority = &v
 		}
 

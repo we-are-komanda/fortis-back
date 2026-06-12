@@ -7,16 +7,23 @@ const SchemaVersion = 1
 
 // Coordinates — value object для географических координат.
 type Coordinates struct {
-	lat float64
-	lng float64
+	lat      float64
+	lng      float64
+	altitude *float64
 }
 
-func NewCoordinates(lat, lng float64) Coordinates {
-	return Coordinates{lat: lat, lng: lng}
+func NewCoordinates(lat, lng float64, altitude ...float64) Coordinates {
+	c := Coordinates{lat: lat, lng: lng}
+	if len(altitude) > 0 {
+		a := altitude[0]
+		c.altitude = &a
+	}
+	return c
 }
 
-func (c Coordinates) Lat() float64 { return c.lat }
-func (c Coordinates) Lng() float64 { return c.lng }
+func (c Coordinates) Lat() float64      { return c.lat }
+func (c Coordinates) Lng() float64      { return c.lng }
+func (c Coordinates) Altitude() *float64 { return c.altitude }
 
 // ProtectedObject — value object защищаемого объекта.
 type ProtectedObject struct {
@@ -220,7 +227,13 @@ const (
 )
 
 // DefensePriority — приоритет средства защиты.
-type DefensePriority int
+type DefensePriority string
+
+const (
+	DefensePriorityPrimary   DefensePriority = "primary"
+	DefensePriorityMedium    DefensePriority = "medium"
+	DefensePriorityLow       DefensePriority = "low"
+)
 
 // DefenseAsset — value object средства защиты.
 type DefenseAsset struct {
@@ -432,25 +445,27 @@ const (
 
 // DefenseProject — aggregate корень для проекта защиты.
 type DefenseProject struct {
-	schemaVersion  int
-	projectID      string
-	projectName    string
-	baseObject     ProtectedObject
-	layers         []EditableDefenseLayer
-	assetLibrary   []DefenseAsset
-	placedObjects  []PlacedDefenseObject
-	activeLayerID  *string
-	selectedAssetID *string
+	schemaVersion   int
+	projectID       string
+	name            string
+	enterpriseID    string
+	projectName     string
+	baseObject      ProtectedObject
+	layers          []EditableDefenseLayer
+	assetLibrary    []DefenseAsset
+	placedObjects   []PlacedDefenseObject
+	activeLayerID   *string
+	selectedAssetID  *string
 	selectedObjectID *string
-	mode           DefenseProjectMode
-	source         DefenseProjectSource
-	basePresetID   *string
-	updatedAt      time.Time
+	mode            DefenseProjectMode
+	source          DefenseProjectSource
+	basePresetID    *string
+	updatedAt       time.Time
 }
 
 // NewDefenseProject создаёт новый DefenseProject с валидацией.
 func NewDefenseProject(
-	projectID, projectName string,
+	projectID, name, enterpriseID, projectName string,
 	baseObject ProtectedObject,
 	layers []EditableDefenseLayer,
 	assetLibrary []DefenseAsset,
@@ -480,6 +495,8 @@ func NewDefenseProject(
 	return &DefenseProject{
 		schemaVersion:    SchemaVersion,
 		projectID:        projectID,
+		name:             name,
+		enterpriseID:     enterpriseID,
 		projectName:      projectName,
 		baseObject:       baseObject,
 		layers:           layers,
@@ -498,6 +515,8 @@ func NewDefenseProject(
 // Getters for DefenseProject.
 func (p *DefenseProject) SchemaVersion() int                       { return p.schemaVersion }
 func (p *DefenseProject) ProjectID() string                       { return p.projectID }
+func (p *DefenseProject) Name() string                            { return p.name }
+func (p *DefenseProject) EnterpriseID() string                    { return p.enterpriseID }
 func (p *DefenseProject) ProjectName() string                     { return p.projectName }
 func (p *DefenseProject) BaseObject() ProtectedObject              { return p.baseObject }
 func (p *DefenseProject) Layers() []EditableDefenseLayer           { return p.layers }
@@ -519,4 +538,14 @@ func (p *DefenseProject) SetProjectID(id string) {
 // SetUpdatedAt обновляет время последнего изменения.
 func (p *DefenseProject) SetUpdatedAt(t time.Time) {
 	p.updatedAt = t
+}
+
+// SetName обновляет название варианта конфигурации.
+func (p *DefenseProject) SetName(name string) {
+	p.name = name
+}
+
+// SetEnterpriseID обновляет привязку к предприятию.
+func (p *DefenseProject) SetEnterpriseID(enterpriseID string) {
+	p.enterpriseID = enterpriseID
 }

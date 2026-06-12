@@ -9,3 +9,24 @@ func domainToImportResponse(p *domain.DefenseProject) ImportResponse {
 	resp.Body.UpdatedAt = p.UpdatedAt().UTC().Format("2006-01-02T15:04:05.000Z")
 	return resp
 }
+
+func domainToProjectResponse(p *domain.DefenseProject) ProjectResponse {
+	return ProjectResponse{
+		ProjectID:    p.ProjectID(),
+		Name:         p.Name(),
+		EnterpriseID: p.EnterpriseID(),
+		ProjectName:  p.ProjectName(),
+		UpdatedAt:    p.UpdatedAt().UTC().Format("2006-01-02T15:04:05.000Z"),
+	}
+}
+
+func domainToProjectListResponse(projects []*domain.DefenseProject, total int64) ProjectListResponse {
+	items := make([]ProjectResponse, len(projects))
+	for i, p := range projects {
+		items[i] = domainToProjectResponse(p)
+	}
+	return ProjectListResponse{
+		Items:      items,
+		TotalItems: total,
+	}
+}

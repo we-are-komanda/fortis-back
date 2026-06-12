@@ -11,4 +11,7 @@ var (
 
 	// ErrProjectNotFound возвращается когда проект не найден.
 	ErrProjectNotFound = errors.New("project not found")
+
+	// ErrInvalidConfigName возвращается при пустом имени конфигурации.
+	ErrInvalidConfigName = errors.New("invalid configuration name: name is required")
 )

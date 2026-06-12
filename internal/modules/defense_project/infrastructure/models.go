@@ -9,10 +9,12 @@ import (
 
 // DefenseProjectModel — GORM-модель для хранения DefenseProject.
 type DefenseProjectModel struct {
-	ID          string    `gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	ProjectData string    `gorm:"type:jsonb;not null"`
-	CreatedAt   time.Time `gorm:"autoCreateTime"`
-	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
+	ID           string    `gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	Name         string    `gorm:"not null;default:''"`
+	EnterpriseID string    `gorm:"type:uuid;index;default:null"`
+	ProjectData  string    `gorm:"type:jsonb;not null"`
+	CreatedAt    time.Time `gorm:"autoCreateTime"`
+	UpdatedAt    time.Time `gorm:"autoUpdateTime"`
 }
 
 func (DefenseProjectModel) TableName() string {
@@ -99,7 +101,7 @@ type defenseAssetJSON struct {
 	IconURL               *string  `json:"iconUrl,omitempty"`
 	ModelURL              *string  `json:"modelUrl,omitempty"`
 	Score                 *int     `json:"score,omitempty"`
-	Priority              *int     `json:"priority,omitempty"`
+	Priority              *string  `json:"priority,omitempty"`
 	Tags                  []string `json:"tags,omitempty"`
 	LegacyItemID          *string  `json:"legacyItemId,omitempty"`
 	CalculatorAssetID     *string  `json:"calculatorAssetId,omitempty"`
@@ -136,6 +138,8 @@ func (m *DefenseProjectModel) ToDomain() (*domain.DefenseProject, error) {
 
 	project := jsonToDomain(data)
 	project.SetProjectID(m.ID)
+	project.SetName(m.Name)
+	project.SetEnterpriseID(m.EnterpriseID)
 	return project, nil
 }
 
@@ -148,9 +152,11 @@ func ToModel(p *domain.DefenseProject) (*DefenseProjectModel, error) {
 	}
 
 	return &DefenseProjectModel{
-		ID:          p.ProjectID(),
-		ProjectData: string(raw),
-		UpdatedAt:   p.UpdatedAt(),
+		ID:           p.ProjectID(),
+		Name:         p.Name(),
+		EnterpriseID: p.EnterpriseID(),
+		ProjectData:  string(raw),
+		UpdatedAt:    p.UpdatedAt(),
 	}, nil
 }
 
@@ -215,8 +221,9 @@ func jsonToDomain(data projectDataJSON) *domain.DefenseProject {
 	updatedAt, _ := time.Parse(time.RFC3339Nano, data.UpdatedAt)
 
 	//nolint:errcheck // валидация уже пройдена на уровне сервиса
+	// name и enterpriseID передаём пустыми — они устанавливаются из колонок GORM в ToDomain.
 	project, _ := domain.NewDefenseProject(
-		data.ProjectID, data.ProjectName,
+		data.ProjectID, "", "", data.ProjectName,
 		baseObj, layers, assets, objects,
 		data.ActiveLayerID, data.SelectedAssetID, data.SelectedObjectID,
 		domain.DefenseProjectMode(data.Mode),
@@ -320,9 +327,9 @@ func assetToJSON(a domain.DefenseAsset) defenseAssetJSON {
 		compatTypes[i] = string(t)
 	}
 
-	var priority *int
+	var priority *string
 	if p := a.Priority(); p != nil {
-		v := int(*p)
+		v := string(*p)
 		priority = &v
 	}
 

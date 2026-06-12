@@ -39,6 +39,24 @@ func (m *mockRepo) FindByID(ctx context.Context, id string) (*domain.DefenseProj
 	return p, nil
 }
 
+func (m *mockRepo) FindAll(ctx context.Context, limit, offset int) ([]*domain.DefenseProject, int64, error) {
+	projects := make([]*domain.DefenseProject, 0, len(m.projects))
+	for _, p := range m.projects {
+		projects = append(projects, p)
+	}
+	return projects, int64(len(projects)), nil
+}
+
+func (m *mockRepo) FindAllByEnterprise(ctx context.Context, enterpriseID string, limit, offset int) ([]*domain.DefenseProject, int64, error) {
+	projects := make([]*domain.DefenseProject, 0)
+	for _, p := range m.projects {
+		if p.EnterpriseID() == enterpriseID {
+			projects = append(projects, p)
+		}
+	}
+	return projects, int64(len(projects)), nil
+}
+
 func (m *mockRepo) Delete(ctx context.Context, id string) error {
 	if m.err != nil {
 		return m.err

@@ -26,6 +26,11 @@ func TestSentinelErrors(t *testing.T) {
 			err:  ErrProjectNotFound,
 			msg:  "project not found",
 		},
+		{
+			name: "ErrInvalidConfigName",
+			err:  ErrInvalidConfigName,
+			msg:  "invalid configuration name: name is required",
+		},
 	}
 
 	for _, tt := range tests {

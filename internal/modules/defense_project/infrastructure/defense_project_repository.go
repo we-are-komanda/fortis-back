@@ -39,7 +39,13 @@ func (r *DefenseProjectRepository) Save(ctx context.Context, project *domain.Def
 	}
 
 	// Обновить существующую
-	return db.Model(&DefenseProjectModel{}).Where("id = ?", model.ID).Update("project_data", model.ProjectData).Error
+	return db.Model(&DefenseProjectModel{}).Where("id = ?", model.ID).Select("name", "enterprise_id", "project_data", "updated_at").
+		Updates(map[string]interface{}{
+			"name":          model.Name,
+			"enterprise_id": model.EnterpriseID,
+			"project_data":  model.ProjectData,
+			"updated_at":    model.UpdatedAt,
+		}).Error
 }
 
 func (r *DefenseProjectRepository) FindByID(ctx context.Context, id string) (*domain.DefenseProject, error) {
@@ -53,6 +59,58 @@ func (r *DefenseProjectRepository) FindByID(ctx context.Context, id string) (*do
 	}
 
 	return model.ToDomain()
+}
+
+func (r *DefenseProjectRepository) FindAll(ctx context.Context, limit, offset int) ([]*domain.DefenseProject, int64, error) {
+	var models []DefenseProjectModel
+	var total int64
+
+	db := r.executor.WithContext(ctx)
+
+	if err := db.Model(&DefenseProjectModel{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	if err := db.Limit(limit).Offset(offset).Order("created_at DESC").Find(&models).Error; err != nil {
+		return nil, 0, err
+	}
+
+	projects := make([]*domain.DefenseProject, len(models))
+	for i, m := range models {
+		p, err := m.ToDomain()
+		if err != nil {
+			return nil, 0, err
+		}
+		projects[i] = p
+	}
+
+	return projects, total, nil
+}
+
+func (r *DefenseProjectRepository) FindAllByEnterprise(ctx context.Context, enterpriseID string, limit, offset int) ([]*domain.DefenseProject, int64, error) {
+	var models []DefenseProjectModel
+	var total int64
+
+	db := r.executor.WithContext(ctx)
+
+	if err := db.Model(&DefenseProjectModel{}).Where("enterprise_id = ?", enterpriseID).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	if err := db.Where("enterprise_id = ?", enterpriseID).Limit(limit).Offset(offset).Order("created_at DESC").Find(&models).Error; err != nil {
+		return nil, 0, err
+	}
+
+	projects := make([]*domain.DefenseProject, len(models))
+	for i, m := range models {
+		p, err := m.ToDomain()
+		if err != nil {
+			return nil, 0, err
+		}
+		projects[i] = p
+	}
+
+	return projects, total, nil
 }
 
 func (r *DefenseProjectRepository) Delete(ctx context.Context, id string) error {

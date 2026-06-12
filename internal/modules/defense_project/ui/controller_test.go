@@ -18,6 +18,10 @@ type mockService struct {
 	importErr     error
 	exportJSON    string
 	exportErr     error
+	projects      []*domain.DefenseProject
+	totalItems    int64
+	projectByID   *domain.DefenseProject
+	crudErr       error
 }
 
 func (m *mockService) Import(ctx context.Context, rawJSON string) (*domain.DefenseProject, error) {
@@ -28,10 +32,38 @@ func (m *mockService) Export(ctx context.Context, projectID string) (string, err
 	return m.exportJSON, m.exportErr
 }
 
+func (m *mockService) CreateFromJSON(ctx context.Context, name, enterpriseID, rawJSON string) (*domain.DefenseProject, error) {
+	return m.importProject, m.importErr
+}
+
+func (m *mockService) ListProjects(ctx context.Context, enterpriseID string, limit, offset int) ([]*domain.DefenseProject, int64, error) {
+	return m.projects, m.totalItems, m.crudErr
+}
+
+func (m *mockService) GetProject(ctx context.Context, id string) (*domain.DefenseProject, error) {
+	return m.projectByID, m.crudErr
+}
+
+func (m *mockService) UpdateProject(ctx context.Context, id, name, enterpriseID string) (*domain.DefenseProject, error) {
+	if m.crudErr != nil {
+		return nil, m.crudErr
+	}
+	if m.projectByID == nil {
+		return nil, domain.ErrProjectNotFound
+	}
+	return m.projectByID, nil
+}
+
+func (m *mockService) DeleteProject(ctx context.Context, id string) error {
+	return m.crudErr
+}
+
 func validProject() *domain.DefenseProject {
 	now := time.Now().UTC()
 	project, _ := domain.NewDefenseProject(
 		"550e8400-e29b-41d4-a716-446655440000",
+		"Моя конфигурация",
+		"",
 		"Тестовый проект",
 		domain.NewProtectedObject("obj-1", "Объект Альфа", domain.NewCoordinates(55.75, 37.62)),
 		[]domain.EditableDefenseLayer{},
@@ -207,5 +239,199 @@ func TestDefenseProjectController_Export_InternalError(t *testing.T) {
 
 	if ctx.Response.StatusCode() != fasthttp.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", ctx.Response.StatusCode())
+	}
+}
+
+// ---- CRUD tests ----
+
+func TestDefenseProjectController_Create_Success(t *testing.T) {
+	svc := &mockService{
+		importProject: validProject(),
+	}
+	ctrl := NewDefenseProjectController(svc)
+
+	reqBody := `{"name":"Моя конфигурация","projectJson":"{\"schemaVersion\":1,\"projectName\":\"Test\"}"}`
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.SetBody([]byte(reqBody))
+
+	ctrl.Create(ctx)
+
+	if ctx.Response.StatusCode() != fasthttp.StatusOK {
+		t.Errorf("expected status 200, got %d", ctx.Response.StatusCode())
+	}
+
+	var resp ProjectResponse
+	if err := json.Unmarshal(ctx.Response.Body(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if resp.ProjectID != "550e8400-e29b-41d4-a716-446655440000" {
+		t.Errorf("expected projectId, got %q", resp.ProjectID)
+	}
+	if resp.Name != "Моя конфигурация" {
+		t.Errorf("expected name 'Моя конфигурация', got %q", resp.Name)
+	}
+}
+
+func TestDefenseProjectController_Create_EmptyName(t *testing.T) {
+	ctrl := NewDefenseProjectController(&mockService{})
+
+	reqBody := `{"name":"","projectJson":"{}"}`
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.SetBody([]byte(reqBody))
+
+	ctrl.Create(ctx)
+
+	if ctx.Response.StatusCode() != fasthttp.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", ctx.Response.StatusCode())
+	}
+}
+
+func TestDefenseProjectController_List_Success(t *testing.T) {
+	svc := &mockService{
+		projects:   []*domain.DefenseProject{validProject()},
+		totalItems: 1,
+	}
+	ctrl := NewDefenseProjectController(svc)
+
+	ctx := &fasthttp.RequestCtx{}
+
+	ctrl.List(ctx)
+
+	if ctx.Response.StatusCode() != fasthttp.StatusOK {
+		t.Errorf("expected status 200, got %d", ctx.Response.StatusCode())
+	}
+
+	var resp ProjectListResponse
+	if err := json.Unmarshal(ctx.Response.Body(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if resp.TotalItems != 1 {
+		t.Errorf("expected totalItems 1, got %d", resp.TotalItems)
+	}
+	if len(resp.Items) != 1 {
+		t.Errorf("expected 1 item, got %d", len(resp.Items))
+	}
+	if resp.Items[0].Name != "Моя конфигурация" {
+		t.Errorf("expected name 'Моя конфигурация', got %q", resp.Items[0].Name)
+	}
+}
+
+func TestDefenseProjectController_Get_Success(t *testing.T) {
+	svc := &mockService{
+		projectByID: validProject(),
+	}
+	ctrl := NewDefenseProjectController(svc)
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.QueryArgs().Set("id", "550e8400-e29b-41d4-a716-446655440000")
+
+	ctrl.Get(ctx)
+
+	if ctx.Response.StatusCode() != fasthttp.StatusOK {
+		t.Errorf("expected status 200, got %d", ctx.Response.StatusCode())
+	}
+
+	var resp ProjectResponse
+	if err := json.Unmarshal(ctx.Response.Body(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if resp.ProjectID != "550e8400-e29b-41d4-a716-446655440000" {
+		t.Errorf("expected projectId, got %q", resp.ProjectID)
+	}
+}
+
+func TestDefenseProjectController_Get_MissingID(t *testing.T) {
+	ctrl := NewDefenseProjectController(&mockService{})
+
+	ctx := &fasthttp.RequestCtx{}
+
+	ctrl.Get(ctx)
+
+	if ctx.Response.StatusCode() != fasthttp.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", ctx.Response.StatusCode())
+	}
+}
+
+func TestDefenseProjectController_Get_NotFound(t *testing.T) {
+	svc := &mockService{
+		crudErr: domain.ErrProjectNotFound,
+	}
+	ctrl := NewDefenseProjectController(svc)
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.QueryArgs().Set("id", "nonexistent")
+
+	ctrl.Get(ctx)
+
+	if ctx.Response.StatusCode() != fasthttp.StatusNotFound {
+		t.Errorf("expected status 404, got %d", ctx.Response.StatusCode())
+	}
+}
+
+func TestDefenseProjectController_Update_Success(t *testing.T) {
+	svc := &mockService{
+		projectByID: validProject(),
+	}
+	ctrl := NewDefenseProjectController(svc)
+
+	reqBody := `{"name":"Новое имя"}`
+	ctx := &fasthttp.RequestCtx{}
+	ctx.QueryArgs().Set("id", "550e8400-e29b-41d4-a716-446655440000")
+	ctx.Request.SetBody([]byte(reqBody))
+
+	ctrl.Update(ctx)
+
+	if ctx.Response.StatusCode() != fasthttp.StatusOK {
+		t.Errorf("expected status 200, got %d", ctx.Response.StatusCode())
+	}
+
+	var resp ProjectResponse
+	if err := json.Unmarshal(ctx.Response.Body(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if resp.ProjectID != "550e8400-e29b-41d4-a716-446655440000" {
+		t.Errorf("expected projectId, got %q", resp.ProjectID)
+	}
+}
+
+func TestDefenseProjectController_Delete_Success(t *testing.T) {
+	svc := &mockService{}
+	ctrl := NewDefenseProjectController(svc)
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.QueryArgs().Set("id", "550e8400-e29b-41d4-a716-446655440000")
+
+	ctrl.Delete(ctx)
+
+	if ctx.Response.StatusCode() != fasthttp.StatusOK {
+		t.Errorf("expected status 200, got %d", ctx.Response.StatusCode())
+	}
+}
+
+func TestDefenseProjectController_Delete_MissingID(t *testing.T) {
+	ctrl := NewDefenseProjectController(&mockService{})
+
+	ctx := &fasthttp.RequestCtx{}
+
+	ctrl.Delete(ctx)
+
+	if ctx.Response.StatusCode() != fasthttp.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", ctx.Response.StatusCode())
+	}
+}
+
+func TestDefenseProjectController_Delete_NotFound(t *testing.T) {
+	svc := &mockService{
+		crudErr: domain.ErrProjectNotFound,
+	}
+	ctrl := NewDefenseProjectController(svc)
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.QueryArgs().Set("id", "nonexistent")
+
+	ctrl.Delete(ctx)
+
+	if ctx.Response.StatusCode() != fasthttp.StatusNotFound {
+		t.Errorf("expected status 404, got %d", ctx.Response.StatusCode())
 	}
 }
