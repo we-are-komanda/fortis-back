@@ -16,6 +16,7 @@ func (app *Application) registerHandlers(r *router.Router) error {
 			defenseProjectController *defenseUi.DefenseProjectController,
 			enterpriseController *enterpriseUi.EnterpriseController,
 			defenseAssetController *defenseAssetUi.DefenseAssetController,
+			documentController *defenseAssetUi.DocumentController,
 		) {
 			r.GET("/api/v1/example", exampleController.Get)
 			r.POST("/api/v1/projects/import", defenseProjectController.Import)
@@ -34,6 +35,11 @@ func (app *Application) registerHandlers(r *router.Router) error {
 			r.POST("/api/v1/assets", defenseAssetController.Create)
 			r.PUT("/api/v1/assets/update", defenseAssetController.Update)
 			r.DELETE("/api/v1/assets/delete", defenseAssetController.Delete)
+			r.GET("/api/v1/assets/documents/list", documentController.List)
+			r.GET("/api/v1/assets/documents/get", documentController.Get)
+			r.GET("/api/v1/assets/documents/download", documentController.Download)
+			r.POST("/api/v1/assets/documents", documentController.Create)
+			r.DELETE("/api/v1/assets/documents/delete", documentController.Delete)
 		})
 
 	return err

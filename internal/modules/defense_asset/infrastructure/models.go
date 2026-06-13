@@ -63,6 +63,51 @@ func (DefenseAssetModel) TableName() string {
 	return "defense_assets"
 }
 
+// DefenseAssetDocumentModel — GORM-модель для хранения документов средства защиты.
+type DefenseAssetDocumentModel struct {
+	ID          uuid.UUID  `gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	AssetID     uuid.UUID  `gorm:"type:uuid;not null;index"`
+	Name        string     `gorm:"not null"`
+	MimeType    string     `gorm:"not null;default:'application/octet-stream'"`
+	SizeBytes   int64      `gorm:"not null;default:0"`
+	StorageKey  string     `gorm:"not null"`
+	DownloadURL string     `gorm:""`
+	OwnerID     *uuid.UUID `gorm:"type:uuid"`
+	CreatedAt   time.Time  `gorm:"autoCreateTime"`
+	UpdatedAt   time.Time  `gorm:"autoUpdateTime"`
+}
+
+func (DefenseAssetDocumentModel) TableName() string {
+	return "defense_asset_documents"
+}
+
+// toDomain преобразует GORM-модель документа в доменный Document.
+func (m *DefenseAssetDocumentModel) toDomain() (*domain.Document, error) {
+	var ownerID *string
+	if m.OwnerID != nil {
+		s := m.OwnerID.String()
+		ownerID = &s
+	}
+
+	doc, err := domain.NewDocument(
+		m.ID.String(),
+		m.AssetID.String(),
+		m.Name,
+		m.MimeType,
+		m.StorageKey,
+		m.DownloadURL,
+		m.SizeBytes,
+		ownerID,
+		m.CreatedAt,
+		m.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return doc, nil
+}
+
 // AssetDataDTO — промежуточная структура для сериализации/десериализации JSONB.
 // Повторяет поля DefenseAsset для JSONB-хранения.
 type AssetDataDTO struct {

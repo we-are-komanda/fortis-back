@@ -63,4 +63,12 @@ func (app *Application) provideDependencies() {
 	processError(err)
 	err = app.container.Provide(defenseAssetInfra.NewDefenseAssetRepository)
 	processError(err)
+
+	// DefenseAsset Document module
+	err = app.container.Provide(defenseAssetUi.NewDocumentController)
+	processError(err)
+	err = app.container.Provide(defenseAssetApp.NewDocumentService)
+	processError(err)
+	err = app.container.Provide(defenseAssetInfra.NewDocumentRepository)
+	processError(err)
 }
