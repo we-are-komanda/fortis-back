@@ -36,6 +36,11 @@ func TestSentinelErrors(t *testing.T) {
 			err:  ErrVersionConflict,
 			msg:  "version conflict: project has been modified by another user",
 		},
+		{
+			name: "ErrInvalidDateFormat",
+			err:  ErrInvalidDateFormat,
+			msg:  "invalid date format: expected RFC3339Nano (e.g. 2026-06-12T14:00:00.000Z)",
+		},
 	}
 
 	for _, tt := range tests {

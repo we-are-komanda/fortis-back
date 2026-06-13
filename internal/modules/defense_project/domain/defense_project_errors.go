@@ -17,4 +17,7 @@ var (
 
 	// ErrVersionConflict возвращается при попытке сохранить устаревшую версию проекта.
 	ErrVersionConflict = errors.New("version conflict: project has been modified by another user")
+
+	// ErrInvalidDateFormat возвращается при некорректном формате даты.
+	ErrInvalidDateFormat = errors.New("invalid date format: expected RFC3339Nano (e.g. 2026-06-12T14:00:00.000Z)")
 )

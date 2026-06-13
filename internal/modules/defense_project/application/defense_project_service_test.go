@@ -429,3 +429,123 @@ func TestDefenseProjectService_Export_RoundTrip(t *testing.T) {
 			project.ProjectName(), reimported.ProjectName())
 	}
 }
+
+func TestDefenseProjectService_Import_InvalidDateFormat(t *testing.T) {
+	repo := newMockRepo()
+	service := NewDefenseProjectService(repo)
+
+	jsonStr := `{
+		"schemaVersion": 1,
+		"projectId": "test",
+		"projectName": "Test",
+		"baseObject": { "id": "o1", "name": "Obj", "center": { "lat": 0, "lng": 0 } },
+		"layers": [],
+		"assetLibrary": [],
+		"placedObjects": [],
+		"mode": "view",
+		"updatedAt": "not-a-valid-date"
+	}`
+
+	_, err := service.Import(context.Background(), jsonStr)
+	if !errors.Is(err, domain.ErrInvalidDateFormat) {
+		t.Errorf("expected ErrInvalidDateFormat, got %v", err)
+	}
+}
+
+func TestDefenseProjectService_Import_InvalidPlacedObjectDateFormat(t *testing.T) {
+	repo := newMockRepo()
+	service := NewDefenseProjectService(repo)
+
+	jsonStr := `{
+		"schemaVersion": 1,
+		"projectId": "test",
+		"projectName": "Test",
+		"baseObject": { "id": "o1", "name": "Obj", "center": { "lat": 0, "lng": 0 } },
+		"layers": [],
+		"assetLibrary": [],
+		"placedObjects": [{
+			"id": "placed-1",
+			"assetId": "asset-1",
+			"layerId": "layer-1",
+			"coordinates": { "lat": 55.76, "lng": 37.63 },
+			"quantity": 1,
+			"status": "active",
+			"hasGeometryConflict": false,
+			"hasCoverageConflict": false,
+			"hasTerrainConflict": false,
+			"createdAt": "invalid-date",
+			"updatedAt": "2026-06-12T14:00:00.000Z"
+		}],
+		"mode": "view",
+		"updatedAt": "2026-06-12T14:00:00.000Z"
+	}`
+
+	_, err := service.Import(context.Background(), jsonStr)
+	if !errors.Is(err, domain.ErrInvalidDateFormat) {
+		t.Errorf("expected ErrInvalidDateFormat, got %v", err)
+	}
+}
+
+func TestDefenseProjectService_Import_ValidISO8601Date(t *testing.T) {
+	// RFC3339Nano without timezone (ISO 8601 without TZ) should fail
+	repo := newMockRepo()
+	service := NewDefenseProjectService(repo)
+
+	jsonStr := `{
+		"schemaVersion": 1,
+		"projectId": "test",
+		"projectName": "Test date",
+		"baseObject": { "id": "o1", "name": "Obj", "center": { "lat": 0, "lng": 0 } },
+		"layers": [],
+		"assetLibrary": [],
+		"placedObjects": [],
+		"mode": "view",
+		"updatedAt": "2026-06-12T14:00:00"
+	}`
+
+	_, err := service.Import(context.Background(), jsonStr)
+	if !errors.Is(err, domain.ErrInvalidDateFormat) {
+		t.Errorf("expected ErrInvalidDateFormat for ISO8601 without timezone, got %v", err)
+	}
+}
+
+func TestDefenseProjectService_Import_ValidDateFormats(t *testing.T) {
+	repo := newMockRepo()
+	service := NewDefenseProjectService(repo)
+
+	// RFC3339Nano with Z suffix (most common from frontend)
+	jsonStr := `{
+		"schemaVersion": 1,
+		"projectId": "test",
+		"projectName": "Test date",
+		"baseObject": { "id": "o1", "name": "Obj", "center": { "lat": 0, "lng": 0 } },
+		"layers": [],
+		"assetLibrary": [],
+		"placedObjects": [],
+		"mode": "view",
+		"updatedAt": "2026-06-12T14:00:00.000Z"
+	}`
+
+	_, err := service.Import(context.Background(), jsonStr)
+	if err != nil {
+		t.Errorf("expected success with Z suffix, got %v", err)
+	}
+
+	// RFC3339Nano with timezone offset
+	jsonStr2 := `{
+		"schemaVersion": 1,
+		"projectId": "test",
+		"projectName": "Test date 2",
+		"baseObject": { "id": "o1", "name": "Obj", "center": { "lat": 0, "lng": 0 } },
+		"layers": [],
+		"assetLibrary": [],
+		"placedObjects": [],
+		"mode": "view",
+		"updatedAt": "2026-06-12T17:00:00.000+03:00"
+	}`
+
+	_, err = service.Import(context.Background(), jsonStr2)
+	if err != nil {
+		t.Errorf("expected success with +03:00 offset, got %v", err)
+	}
+}

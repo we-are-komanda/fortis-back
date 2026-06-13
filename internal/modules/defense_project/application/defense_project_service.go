@@ -164,6 +164,11 @@ func (s *DefenseProjectService) CreateFromJSON(ctx context.Context, name, enterp
 
 	now := time.Now().UTC()
 
+	placedObjects, err := mapImportPlacedObjects(payload.PlacedObjects)
+	if err != nil {
+		return nil, err
+	}
+
 	project, err := domain.NewDefenseProject(
 		projectID, name, enterpriseID, payload.ProjectName,
 		domain.NewProtectedObject(
@@ -173,7 +178,7 @@ func (s *DefenseProjectService) CreateFromJSON(ctx context.Context, name, enterp
 		),
 		mapImportLayers(payload.Layers),
 		mapImportAssets(payload.AssetLibrary),
-		mapImportPlacedObjects(payload.PlacedObjects),
+		placedObjects,
 		payload.ActiveLayerID,
 		payload.SelectedAssetID,
 		payload.SelectedObjectID,
@@ -215,6 +220,13 @@ func (s *DefenseProjectService) Import(ctx context.Context, rawJSON string) (*do
 		return nil, fmt.Errorf("baseObject: %w", domain.ErrInvalidProjectData)
 	}
 
+	// Валидация формата дат (backend перезаписывает updatedAt, но проверяем формат)
+	if payload.UpdatedAt != "" {
+		if _, err := time.Parse(time.RFC3339Nano, payload.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("updatedAt: %w", domain.ErrInvalidDateFormat)
+		}
+	}
+
 	// Сборка доменного объекта
 	mode := domain.DefenseProjectModeView
 	if payload.Mode != "" {
@@ -228,6 +240,11 @@ func (s *DefenseProjectService) Import(ctx context.Context, rawJSON string) (*do
 
 	now := time.Now().UTC()
 
+	placedObjects, err := mapImportPlacedObjects(payload.PlacedObjects)
+	if err != nil {
+		return nil, err
+	}
+
 	project, err := domain.NewDefenseProject(
 		projectID,
 		payload.Name,
@@ -240,7 +257,7 @@ func (s *DefenseProjectService) Import(ctx context.Context, rawJSON string) (*do
 		),
 		mapImportLayers(payload.Layers),
 		mapImportAssets(payload.AssetLibrary),
-		mapImportPlacedObjects(payload.PlacedObjects),
+		placedObjects,
 		payload.ActiveLayerID,
 		payload.SelectedAssetID,
 		payload.SelectedObjectID,
@@ -604,14 +621,20 @@ func mapImportAssets(assets []importAsset) []domain.DefenseAsset {
 	return result
 }
 
-func mapImportPlacedObjects(objects []importPlacedObject) []domain.PlacedDefenseObject {
+func mapImportPlacedObjects(objects []importPlacedObject) ([]domain.PlacedDefenseObject, error) {
 	if objects == nil {
-		return nil
+		return nil, nil
 	}
 	result := make([]domain.PlacedDefenseObject, len(objects))
 	for i, o := range objects {
-		createdAt, _ := time.Parse(time.RFC3339Nano, o.CreatedAt)
-		updatedAt, _ := time.Parse(time.RFC3339Nano, o.UpdatedAt)
+		createdAt, err := time.Parse(time.RFC3339Nano, o.CreatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("placedObject[%d].createdAt: %w", i, domain.ErrInvalidDateFormat)
+		}
+		updatedAt, err := time.Parse(time.RFC3339Nano, o.UpdatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("placedObject[%d].updatedAt: %w", i, domain.ErrInvalidDateFormat)
+		}
 
 		result[i] = domain.NewPlacedDefenseObject(
 			o.ID, o.AssetID, o.LayerID, o.Name,
@@ -624,7 +647,7 @@ func mapImportPlacedObjects(objects []importPlacedObject) []domain.PlacedDefense
 			createdAt, updatedAt,
 		)
 	}
-	return result
+	return result, nil
 }
 
 func exportLayers(layers []domain.EditableDefenseLayer) []exportLayer {
