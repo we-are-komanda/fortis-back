@@ -293,6 +293,10 @@ func (c *DefenseProjectController) Update(ctx *fasthttp.RequestCtx) {
 		switch {
 		case errors.Is(err, domain.ErrProjectNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "project not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
+		case errors.Is(err, domain.ErrInvalidSchemaVersion):
+			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
+		case errors.Is(err, domain.ErrInvalidProjectData):
+			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		case errors.Is(err, domain.ErrVersionConflict):
 			handlers.ErrorHandler(ctx, "version_conflict", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusConflict)
 		default:

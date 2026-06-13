@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -53,6 +54,60 @@ func TestUpdateProjectOverwritesContentWhenProjectJSONProvided(t *testing.T) {
 	}
 	if project.Name() != "Renamed" {
 		t.Errorf("expected name 'Renamed', got %q", project.Name())
+	}
+}
+
+func TestUpdateProjectOverwritePreservesVersion(t *testing.T) {
+	repo := newMockRepo()
+	service := NewDefenseProjectService(repo)
+
+	existing := newExistingProject(t, "p1", "Original", nil)
+	// Симулируем уже несколько раз сохранённый проект (optimistic-lock версия != 1).
+	existing.SetVersion(3)
+	repo.projects["p1"] = existing
+
+	projectJSON := `{
+		"schemaVersion": 1, "projectId": "ignored", "projectName": "Site Alpha",
+		"baseObject": {"id":"o1","name":"Obj","center":{"lat":55.75,"lng":37.61}},
+		"layers": [], "assetLibrary": [], "placedObjects": [],
+		"mode": "view", "updatedAt": "2026-06-12T14:00:00.000Z"
+	}`
+
+	project, err := service.UpdateProject(context.Background(), "p1", "", "", projectJSON)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if project.Version() != 3 {
+		t.Errorf("expected returned project version 3, got %d", project.Version())
+	}
+	// Версия должна сохраниться и в записанном через repo.Save объекте (overwrite
+	// не должен сбрасывать её на 1 или вызывать конфликт версий).
+	saved, ok := repo.projects["p1"]
+	if !ok {
+		t.Fatalf("saved project not found in repo")
+	}
+	if saved.Version() != 3 {
+		t.Errorf("expected saved project version 3, got %d", saved.Version())
+	}
+}
+
+func TestUpdateProjectOverwriteInvalidSchemaVersion(t *testing.T) {
+	repo := newMockRepo()
+	service := NewDefenseProjectService(repo)
+
+	existing := newExistingProject(t, "p1", "Original", nil)
+	repo.projects["p1"] = existing
+
+	projectJSON := `{
+		"schemaVersion": 999, "projectName": "Site Alpha",
+		"baseObject": {"id":"o1","name":"Obj","center":{"lat":55.75,"lng":37.61}},
+		"layers": [], "assetLibrary": [], "placedObjects": []
+	}`
+
+	_, err := service.UpdateProject(context.Background(), "p1", "", "", projectJSON)
+	if !errors.Is(err, domain.ErrInvalidSchemaVersion) {
+		t.Errorf("expected ErrInvalidSchemaVersion, got %v", err)
 	}
 }
 

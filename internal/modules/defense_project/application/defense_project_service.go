@@ -348,6 +348,9 @@ func (s *DefenseProjectService) overwriteProjectContent(ctx context.Context, exi
 	if payload.ProjectName == "" {
 		return nil, fmt.Errorf("projectName: %w", domain.ErrInvalidProjectData)
 	}
+	if payload.BaseObject.ID == "" || payload.BaseObject.Name == "" {
+		return nil, fmt.Errorf("baseObject: %w", domain.ErrInvalidProjectData)
+	}
 
 	mode := domain.DefenseProjectModeView
 	if payload.Mode != "" {
