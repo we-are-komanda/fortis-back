@@ -2,15 +2,16 @@ package db
 
 import (
 	"fmt"
+	"log/slog"
+	"os"
+
+	"github.com/fortis/backend/internal/config"
 	"github.com/golang-migrate/migrate"
 	pg "github.com/golang-migrate/migrate/database/postgres"
 	_ "github.com/golang-migrate/migrate/source/file"
-	"github.com/fortis/backend/internal/config"
 	gormPg "gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	gormLog "gorm.io/gorm/logger"
-	"log/slog"
-	"os"
 )
 
 type DataBase struct {
@@ -34,7 +35,7 @@ func NewDataBase(
 func (db *DataBase) InitConnections(pgCfg config.Postgres) {
 	db.initGorm(pgCfg)
 	// uncomment row below to turn on migration
-	// db.MigrationsUp()
+	db.MigrationsUp()
 }
 
 //go:cover off
