@@ -44,7 +44,7 @@ func (m *mockService) GetProject(ctx context.Context, id string) (*domain.Defens
 	return m.projectByID, m.crudErr
 }
 
-func (m *mockService) UpdateProject(ctx context.Context, id, name, enterpriseID string) (*domain.DefenseProject, error) {
+func (m *mockService) UpdateProject(ctx context.Context, id, name, enterpriseID, projectJSON string) (*domain.DefenseProject, error) {
 	if m.crudErr != nil {
 		return nil, m.crudErr
 	}

@@ -304,11 +304,19 @@ func (s *DefenseProjectService) GetProject(ctx context.Context, id string) (*dom
 	return s.repo.FindByID(ctx, id)
 }
 
-// UpdateProject обновляет имя и enterpriseID существующего проекта.
-func (s *DefenseProjectService) UpdateProject(ctx context.Context, id, name, enterpriseID string) (*domain.DefenseProject, error) {
+// UpdateProject обновляет существующий проект.
+//
+// Если projectJSON непустой — содержимое карты полностью перезаписывается из
+// переданного JSON, при этом сохраняется ID проекта и версия optimistic-lock.
+// Если projectJSON пустой — обновляются только метаданные (имя, enterpriseID).
+func (s *DefenseProjectService) UpdateProject(ctx context.Context, id, name, enterpriseID, projectJSON string) (*domain.DefenseProject, error) {
 	project, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+
+	if projectJSON != "" {
+		return s.overwriteProjectContent(ctx, project, name, enterpriseID, projectJSON)
 	}
 
 	if name != "" {
@@ -323,6 +331,84 @@ func (s *DefenseProjectService) UpdateProject(ctx context.Context, id, name, ent
 	}
 
 	return project, nil
+}
+
+// overwriteProjectContent перестраивает доменный объект из projectJSON, переиспользуя
+// существующий ID проекта и сохраняя версию optimistic-lock.
+func (s *DefenseProjectService) overwriteProjectContent(ctx context.Context, existing *domain.DefenseProject, name, enterpriseID, projectJSON string) (*domain.DefenseProject, error) {
+	var payload importPayload
+	if err := json.Unmarshal([]byte(projectJSON), &payload); err != nil {
+		return nil, fmt.Errorf("unmarshal project json: %w", err)
+	}
+
+	if payload.SchemaVersion != domain.SchemaVersion {
+		return nil, domain.ErrInvalidSchemaVersion
+	}
+
+	if payload.ProjectName == "" {
+		return nil, fmt.Errorf("projectName: %w", domain.ErrInvalidProjectData)
+	}
+
+	mode := domain.DefenseProjectModeView
+	if payload.Mode != "" {
+		mode = domain.DefenseProjectMode(payload.Mode)
+	}
+
+	source := domain.DefenseProjectSourceCustom
+	if payload.Source != "" {
+		source = domain.DefenseProjectSource(payload.Source)
+	}
+
+	// Итоговое имя: явный аргумент name важнее, затем payload.Name, затем текущее имя.
+	finalName := existing.Name()
+	if payload.Name != "" {
+		finalName = payload.Name
+	}
+	if name != "" {
+		finalName = name
+	}
+
+	// Итоговый enterpriseID: тот же порядок предпочтения.
+	finalEnterpriseID := existing.EnterpriseID()
+	if payload.EnterpriseID != "" {
+		finalEnterpriseID = payload.EnterpriseID
+	}
+	if enterpriseID != "" {
+		finalEnterpriseID = enterpriseID
+	}
+
+	now := time.Now().UTC()
+
+	rebuilt, err := domain.NewDefenseProject(
+		existing.ProjectID(), finalName, finalEnterpriseID, payload.ProjectName,
+		domain.NewProtectedObject(
+			payload.BaseObject.ID,
+			payload.BaseObject.Name,
+			domain.NewCoordinates(payload.BaseObject.Center.Lat, payload.BaseObject.Center.Lng),
+		),
+		mapImportLayers(payload.Layers),
+		mapImportAssets(payload.AssetLibrary),
+		mapImportPlacedObjects(payload.PlacedObjects),
+		payload.ActiveLayerID,
+		payload.SelectedAssetID,
+		payload.SelectedObjectID,
+		mode, source,
+		payload.BasePresetID,
+		now,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Сохраняем версию optimistic-lock с загруженного проекта, чтобы проверка
+	// версии в repo.Save оставалась корректной (NewDefenseProject сбрасывает её на 1).
+	rebuilt.SetVersion(existing.Version())
+
+	if err := s.repo.Save(ctx, rebuilt); err != nil {
+		return nil, fmt.Errorf("save project: %w", err)
+	}
+
+	return rebuilt, nil
 }
 
 // DeleteProject удаляет проект по ID.
