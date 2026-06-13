@@ -460,6 +460,7 @@ type DefenseProject struct {
 	mode            DefenseProjectMode
 	source          DefenseProjectSource
 	basePresetID    *string
+	version         int
 	updatedAt       time.Time
 }
 
@@ -508,6 +509,7 @@ func NewDefenseProject(
 		mode:             mode,
 		source:           source,
 		basePresetID:     basePresetID,
+		version:          1,
 		updatedAt:        updatedAt,
 	}, nil
 }
@@ -528,6 +530,7 @@ func (p *DefenseProject) SelectedObjectID() *string               { return p.sel
 func (p *DefenseProject) Mode() DefenseProjectMode                { return p.mode }
 func (p *DefenseProject) Source() DefenseProjectSource            { return p.source }
 func (p *DefenseProject) BasePresetID() *string                   { return p.basePresetID }
+func (p *DefenseProject) Version() int                            { return p.version }
 func (p *DefenseProject) UpdatedAt() time.Time                    { return p.updatedAt }
 
 // SetProjectID обновляет ID проекта (используется при сохранении).
@@ -548,4 +551,9 @@ func (p *DefenseProject) SetName(name string) {
 // SetEnterpriseID обновляет привязку к предприятию.
 func (p *DefenseProject) SetEnterpriseID(enterpriseID string) {
 	p.enterpriseID = enterpriseID
+}
+
+// SetVersion устанавливает версию проекта (используется при загрузке из БД).
+func (p *DefenseProject) SetVersion(version int) {
+	p.version = version
 }

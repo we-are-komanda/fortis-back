@@ -67,6 +67,8 @@ func (c *DefenseProjectController) Import(ctx *fasthttp.RequestCtx) {
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		case errors.Is(err, domain.ErrInvalidProjectData):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
+		case errors.Is(err, domain.ErrVersionConflict):
+			handlers.ErrorHandler(ctx, "version_conflict", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusConflict)
 		default:
 			handlers.ErrorHandler(ctx, "internal_error", "failed to import project", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
 		}
@@ -158,6 +160,8 @@ func (c *DefenseProjectController) Create(ctx *fasthttp.RequestCtx) {
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		case errors.Is(err, domain.ErrInvalidConfigName):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
+		case errors.Is(err, domain.ErrVersionConflict):
+			handlers.ErrorHandler(ctx, "version_conflict", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusConflict)
 		default:
 			handlers.ErrorHandler(ctx, "internal_error", "failed to create project", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
 		}
@@ -289,6 +293,8 @@ func (c *DefenseProjectController) Update(ctx *fasthttp.RequestCtx) {
 		switch {
 		case errors.Is(err, domain.ErrProjectNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "project not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
+		case errors.Is(err, domain.ErrVersionConflict):
+			handlers.ErrorHandler(ctx, "version_conflict", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusConflict)
 		default:
 			handlers.ErrorHandler(ctx, "internal_error", "failed to update project", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
 		}

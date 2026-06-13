@@ -31,6 +31,11 @@ func TestSentinelErrors(t *testing.T) {
 			err:  ErrInvalidConfigName,
 			msg:  "invalid configuration name: name is required",
 		},
+		{
+			name: "ErrVersionConflict",
+			err:  ErrVersionConflict,
+			msg:  "version conflict: project has been modified by another user",
+		},
 	}
 
 	for _, tt := range tests {

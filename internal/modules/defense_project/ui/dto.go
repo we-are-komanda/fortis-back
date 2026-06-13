@@ -20,6 +20,9 @@ type ImportResponse struct {
 		// Название проекта
 		// Example: Защита объекта Альфа
 		ProjectName string `json:"projectName"`
+		// Версия проекта для optimistic locking
+		// Example: 1
+		Version int `json:"version"`
 		// Дата обновления проекта
 		// Example: 2026-06-12T14:00:00.000Z
 		UpdatedAt string `json:"updatedAt"`
@@ -70,6 +73,9 @@ type ProjectResponse struct {
 	// Название проекта
 	// Example: Защита объекта Альфа
 	ProjectName string `json:"projectName"`
+	// Версия проекта для optimistic locking
+	// Example: 1
+	Version int `json:"version"`
 	// Дата обновления
 	// Example: 2026-06-12T14:00:00.000Z
 	UpdatedAt string `json:"updatedAt"`

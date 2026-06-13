@@ -38,14 +38,22 @@ func (r *DefenseProjectRepository) Save(ctx context.Context, project *domain.Def
 		return result.Error
 	}
 
-	// Обновить существующую
-	return db.Model(&DefenseProjectModel{}).Where("id = ?", model.ID).Select("name", "enterprise_id", "project_data", "updated_at").
+	// Обновить существующую с проверкой версии (optimistic locking)
+	result = db.Model(&DefenseProjectModel{}).Where("id = ? AND version = ?", model.ID, model.Version).
 		Updates(map[string]interface{}{
 			"name":          model.Name,
 			"enterprise_id": model.EnterpriseID,
 			"project_data":  model.ProjectData,
+			"version":       model.Version + 1,
 			"updated_at":    model.UpdatedAt,
-		}).Error
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return domain.ErrVersionConflict
+	}
+	return nil
 }
 
 func (r *DefenseProjectRepository) FindByID(ctx context.Context, id string) (*domain.DefenseProject, error) {
