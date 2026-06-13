@@ -24,6 +24,7 @@ tasks/
 *.dll
 *.so
 *.dylib
+app
 app-cmd
 
 # Test binaries
