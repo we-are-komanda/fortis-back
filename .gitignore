@@ -27,6 +27,9 @@ tasks/
 app
 app-cmd
 
+# Air live-reload build dir
+tmp/
+
 # Test binaries
 *.test
 

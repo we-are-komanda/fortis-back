@@ -13,6 +13,18 @@ down:
 run:
 	go run ./cmd/app/
 
+# Локальный запуск с подгрузкой .env в окружение (приложение само .env не читает).
+run-dev:
+	set -a && . ./.env && set +a && go run ./cmd/app/
+
+# Live-reload через Air: ставится `make air-install`, .env подхватывается автоматически.
+# Конфиг — .air.toml. Air вызывается из GOPATH/bin, чтобы не зависеть от PATH.
+dev:
+	set -a && . ./.env && set +a && $(shell go env GOPATH)/bin/air
+
+air-install:
+	go install github.com/air-verse/air@latest
+
 down-force:
 	docker-compose down --remove-orphans -v
 
