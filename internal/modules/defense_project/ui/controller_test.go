@@ -97,6 +97,7 @@ func TestDefenseProjectController_Import_Success(t *testing.T) {
 	var respBody struct {
 		ProjectID   string `json:"projectId"`
 		ProjectName string `json:"projectName"`
+		Version     int    `json:"version"`
 		UpdatedAt   string `json:"updatedAt"`
 	}
 	if err := json.Unmarshal(ctx.Response.Body(), &respBody); err != nil {
@@ -108,6 +109,9 @@ func TestDefenseProjectController_Import_Success(t *testing.T) {
 	}
 	if respBody.ProjectName != "Тестовый проект" {
 		t.Errorf("expected projectName 'Тестовый проект', got %q", respBody.ProjectName)
+	}
+	if respBody.Version != 1 {
+		t.Errorf("expected version 1, got %d", respBody.Version)
 	}
 }
 
@@ -168,6 +172,23 @@ func TestDefenseProjectController_Import_InvalidProjectData(t *testing.T) {
 
 	if ctx.Response.StatusCode() != fasthttp.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", ctx.Response.StatusCode())
+	}
+}
+
+func TestDefenseProjectController_Import_VersionConflict(t *testing.T) {
+	svc := &mockService{
+		importErr: domain.ErrVersionConflict,
+	}
+	ctrl := NewDefenseProjectController(svc)
+
+	reqBody := `{"projectJson": "{\"schemaVersion\":1,\"projectName\":\"Test\"}"}`
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.SetBody([]byte(reqBody))
+
+	ctrl.Import(ctx)
+
+	if ctx.Response.StatusCode() != fasthttp.StatusConflict {
+		t.Errorf("expected status 409, got %d", ctx.Response.StatusCode())
 	}
 }
 
@@ -270,6 +291,26 @@ func TestDefenseProjectController_Create_Success(t *testing.T) {
 	if resp.Name != "Моя конфигурация" {
 		t.Errorf("expected name 'Моя конфигурация', got %q", resp.Name)
 	}
+	if resp.Version != 1 {
+		t.Errorf("expected version 1, got %d", resp.Version)
+	}
+}
+
+func TestDefenseProjectController_Create_VersionConflict(t *testing.T) {
+	svc := &mockService{
+		importErr: domain.ErrVersionConflict,
+	}
+	ctrl := NewDefenseProjectController(svc)
+
+	reqBody := `{"name":"Моя конфигурация","projectJson":"{\"schemaVersion\":1,\"projectName\":\"Test\"}"}`
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.SetBody([]byte(reqBody))
+
+	ctrl.Create(ctx)
+
+	if ctx.Response.StatusCode() != fasthttp.StatusConflict {
+		t.Errorf("expected status 409, got %d", ctx.Response.StatusCode())
+	}
 }
 
 func TestDefenseProjectController_Create_EmptyName(t *testing.T) {
@@ -314,6 +355,9 @@ func TestDefenseProjectController_List_Success(t *testing.T) {
 	if resp.Items[0].Name != "Моя конфигурация" {
 		t.Errorf("expected name 'Моя конфигурация', got %q", resp.Items[0].Name)
 	}
+	if resp.Items[0].Version != 1 {
+		t.Errorf("expected version 1, got %d", resp.Items[0].Version)
+	}
 }
 
 func TestDefenseProjectController_Get_Success(t *testing.T) {
@@ -337,6 +381,9 @@ func TestDefenseProjectController_Get_Success(t *testing.T) {
 	}
 	if resp.ProjectID != "550e8400-e29b-41d4-a716-446655440000" {
 		t.Errorf("expected projectId, got %q", resp.ProjectID)
+	}
+	if resp.Version != 1 {
+		t.Errorf("expected version 1, got %d", resp.Version)
 	}
 }
 
@@ -391,6 +438,27 @@ func TestDefenseProjectController_Update_Success(t *testing.T) {
 	}
 	if resp.ProjectID != "550e8400-e29b-41d4-a716-446655440000" {
 		t.Errorf("expected projectId, got %q", resp.ProjectID)
+	}
+	if resp.Version != 1 {
+		t.Errorf("expected version 1, got %d", resp.Version)
+	}
+}
+
+func TestDefenseProjectController_Update_VersionConflict(t *testing.T) {
+	svc := &mockService{
+		crudErr: domain.ErrVersionConflict,
+	}
+	ctrl := NewDefenseProjectController(svc)
+
+	reqBody := `{"name":"Новое имя"}`
+	ctx := &fasthttp.RequestCtx{}
+	ctx.QueryArgs().Set("id", "550e8400-e29b-41d4-a716-446655440000")
+	ctx.Request.SetBody([]byte(reqBody))
+
+	ctrl.Update(ctx)
+
+	if ctx.Response.StatusCode() != fasthttp.StatusConflict {
+		t.Errorf("expected status 409, got %d", ctx.Response.StatusCode())
 	}
 }
 

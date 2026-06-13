@@ -13,6 +13,7 @@ type DefenseProjectModel struct {
 	Name         string    `gorm:"not null;default:''"`
 	EnterpriseID string    `gorm:"type:uuid;index;default:null"`
 	ProjectData  string    `gorm:"type:jsonb;not null"`
+	Version      int       `gorm:"not null;default:1"`
 	CreatedAt    time.Time `gorm:"autoCreateTime"`
 	UpdatedAt    time.Time `gorm:"autoUpdateTime"`
 }
@@ -140,6 +141,7 @@ func (m *DefenseProjectModel) ToDomain() (*domain.DefenseProject, error) {
 	project.SetProjectID(m.ID)
 	project.SetName(m.Name)
 	project.SetEnterpriseID(m.EnterpriseID)
+	project.SetVersion(m.Version)
 	return project, nil
 }
 
@@ -156,6 +158,7 @@ func ToModel(p *domain.DefenseProject) (*DefenseProjectModel, error) {
 		Name:         p.Name(),
 		EnterpriseID: p.EnterpriseID(),
 		ProjectData:  string(raw),
+		Version:      p.Version(),
 		UpdatedAt:    p.UpdatedAt(),
 	}, nil
 }

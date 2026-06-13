@@ -14,4 +14,7 @@ var (
 
 	// ErrInvalidConfigName возвращается при пустом имени конфигурации.
 	ErrInvalidConfigName = errors.New("invalid configuration name: name is required")
+
+	// ErrVersionConflict возвращается при попытке сохранить устаревшую версию проекта.
+	ErrVersionConflict = errors.New("version conflict: project has been modified by another user")
 )
