@@ -2,6 +2,9 @@ package main
 
 import (
 	"github.com/fortis/backend/internal/db"
+	budgetApp "github.com/fortis/backend/internal/modules/budget/application"
+	budgetInfra "github.com/fortis/backend/internal/modules/budget/infrastructure"
+	budgetUi "github.com/fortis/backend/internal/modules/budget/ui"
 	defenseAssetApp "github.com/fortis/backend/internal/modules/defense_asset/application"
 	defenseAssetInfra "github.com/fortis/backend/internal/modules/defense_asset/infrastructure"
 	defenseAssetUi "github.com/fortis/backend/internal/modules/defense_asset/ui"
@@ -70,5 +73,13 @@ func (app *Application) provideDependencies() {
 	err = app.container.Provide(defenseAssetApp.NewDocumentService)
 	processError(err)
 	err = app.container.Provide(defenseAssetInfra.NewDocumentRepository)
+	processError(err)
+
+	// Budget module
+	err = app.container.Provide(budgetUi.NewBudgetController)
+	processError(err)
+	err = app.container.Provide(budgetApp.NewBudgetService)
+	processError(err)
+	err = app.container.Provide(budgetInfra.NewBudgetConfigRepository)
 	processError(err)
 }

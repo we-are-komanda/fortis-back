@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/fasthttp/router"
+	budgetUi "github.com/fortis/backend/internal/modules/budget/ui"
 	defenseAssetUi "github.com/fortis/backend/internal/modules/defense_asset/ui"
 	defenseUi "github.com/fortis/backend/internal/modules/defense_project/ui"
 	enterpriseUi "github.com/fortis/backend/internal/modules/enterprise/ui"
@@ -17,6 +18,7 @@ func (app *Application) registerHandlers(r *router.Router) error {
 			enterpriseController *enterpriseUi.EnterpriseController,
 			defenseAssetController *defenseAssetUi.DefenseAssetController,
 			documentController *defenseAssetUi.DocumentController,
+			budgetController *budgetUi.BudgetController,
 		) {
 			r.GET("/api/v1/example", exampleController.Get)
 			r.POST("/api/v1/projects/import", defenseProjectController.Import)
@@ -40,6 +42,12 @@ func (app *Application) registerHandlers(r *router.Router) error {
 			r.GET("/api/v1/assets/documents/download", documentController.Download)
 			r.POST("/api/v1/assets/documents", documentController.Create)
 			r.DELETE("/api/v1/assets/documents/delete", documentController.Delete)
+
+			// Budget routes
+			r.GET("/api/v1/projects/budget", budgetController.GetBudgetConfig)
+			r.PUT("/api/v1/projects/budget", budgetController.UpdateBudgetConfig)
+			r.GET("/api/v1/projects/cost", budgetController.CalculateCost)
+			r.POST("/api/v1/projects/budget/check", budgetController.CheckBudget)
 		})
 
 	return err
