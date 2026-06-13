@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	defenseAssetDomain "github.com/fortis/backend/internal/modules/defense_asset/domain"
 	"github.com/fortis/backend/internal/modules/defense_project/domain"
 )
 
@@ -79,34 +80,36 @@ type editableDefenseLayerJSON struct {
 }
 
 type defenseAssetJSON struct {
-	ID                    string   `json:"id"`
-	Name                  string   `json:"name"`
-	ShortName             *string  `json:"shortName,omitempty"`
-	Description           *string  `json:"description,omitempty"`
-	Category              string   `json:"category"`
-	Roles                 []string `json:"roles"`
-	PricePerUnitMln       *float64 `json:"pricePerUnitMln,omitempty"`
-	Currency              string   `json:"currency"`
-	UnitLabel             string   `json:"unitLabel"`
-	CompatibleLayerTypes  []string `json:"compatibleLayerTypes,omitempty"`
-	RecommendedLayerCodes []string `json:"recommendedLayerCodes,omitempty"`
-	CompatibleLayerCodes  []string `json:"compatibleLayerCodes,omitempty"`
-	IncompatibleLayerCodes []string `json:"incompatibleLayerCodes,omitempty"`
-	MinEffectiveDistance  *float64 `json:"minEffectiveDistance,omitempty"`
-	MaxEffectiveDistance  *float64 `json:"maxEffectiveDistance,omitempty"`
-	CoverageType          string   `json:"coverageType"`
-	CoverageRadius        *float64 `json:"coverageRadius,omitempty"`
-	CoverageAngle         *float64 `json:"coverageAngle,omitempty"`
-	DeploymentType        string   `json:"deploymentType"`
-	PlacementType         string   `json:"placementType"`
-	IconURL               *string  `json:"iconUrl,omitempty"`
-	ModelURL              *string  `json:"modelUrl,omitempty"`
-	Score                 *int     `json:"score,omitempty"`
-	Priority              *string  `json:"priority,omitempty"`
-	Tags                  []string `json:"tags,omitempty"`
-	LegacyItemID          *string  `json:"legacyItemId,omitempty"`
-	CalculatorAssetID     *string  `json:"calculatorAssetId,omitempty"`
-	MapCatalogGroupIDs    []string `json:"mapCatalogGroupIds,omitempty"`
+	ID                    string                                      `json:"id"`
+	Name                  string                                      `json:"name"`
+	ShortName             *string                                     `json:"shortName,omitempty"`
+	Description           *string                                     `json:"description,omitempty"`
+	Category              string                                      `json:"category"`
+	Roles                 []string                                    `json:"roles"`
+	PricePerUnitMln       *float64                                    `json:"pricePerUnitMln,omitempty"`
+	Currency              string                                      `json:"currency"`
+	UnitLabel             string                                      `json:"unitLabel"`
+	CompatibleLayerTypes  []string                                    `json:"compatibleLayerTypes,omitempty"`
+	RecommendedLayerCodes []string                                    `json:"recommendedLayerCodes,omitempty"`
+	CompatibleLayerCodes  []string                                    `json:"compatibleLayerCodes,omitempty"`
+	IncompatibleLayerCodes []string                                   `json:"incompatibleLayerCodes,omitempty"`
+	ProtectionType        string                                      `json:"protectionType,omitempty"`
+	MinEffectiveDistance  *float64                                    `json:"minEffectiveDistance,omitempty"`
+	MaxEffectiveDistance  *float64                                    `json:"maxEffectiveDistance,omitempty"`
+	CoverageType          string                                      `json:"coverageType"`
+	CoverageRadius        *float64                                    `json:"coverageRadius,omitempty"`
+	CoverageAngle         *float64                                    `json:"coverageAngle,omitempty"`
+	DeploymentType        string                                      `json:"deploymentType"`
+	PlacementType         string                                      `json:"placementType"`
+	IconURL               *string                                     `json:"iconUrl,omitempty"`
+	ModelURL              *string                                     `json:"modelUrl,omitempty"`
+	Score                 *int                                        `json:"score,omitempty"`
+	Priority              *string                                     `json:"priority,omitempty"`
+	CompoundProfile       *defenseAssetDomain.DefenseAssetCompoundProfile `json:"compoundProfile,omitempty"`
+	Tags                  []string                                    `json:"tags,omitempty"`
+	LegacyItemID          *string                                     `json:"legacyItemId,omitempty"`
+	CalculatorAssetID     *string                                     `json:"calculatorAssetId,omitempty"`
+	MapCatalogGroupIDs    []string                                    `json:"mapCatalogGroupIds,omitempty"`
 }
 
 type placedDefenseObjectJSON struct {
@@ -348,6 +351,7 @@ func assetToJSON(a domain.DefenseAsset) defenseAssetJSON {
 		RecommendedLayerCodes: a.RecommendedLayerCodes(),
 		CompatibleLayerCodes:  a.CompatibleLayerCodes(),
 		IncompatibleLayerCodes: a.IncompatibleLayerCodes(),
+		ProtectionType:        a.ProtectionType(),
 		MinEffectiveDistance:  a.MinEffectiveDistance(),
 		MaxEffectiveDistance:  a.MaxEffectiveDistance(),
 		CoverageType:          string(a.CoverageType()),
@@ -359,6 +363,7 @@ func assetToJSON(a domain.DefenseAsset) defenseAssetJSON {
 		ModelURL:              a.ModelURL(),
 		Score:                 a.Score(),
 		Priority:              priority,
+		CompoundProfile:       a.CompoundProfile(),
 		Tags:                  a.Tags(),
 		LegacyItemID:          a.LegacyItemID(),
 		CalculatorAssetID:     a.CalculatorAssetID(),
@@ -390,6 +395,7 @@ func jsonToAsset(a defenseAssetJSON) domain.DefenseAsset {
 		a.Currency, a.UnitLabel,
 		compatTypes,
 		a.RecommendedLayerCodes, a.CompatibleLayerCodes, a.IncompatibleLayerCodes,
+		a.ProtectionType,
 		a.MinEffectiveDistance, a.MaxEffectiveDistance,
 		domain.DefenseAssetCoverageType(a.CoverageType),
 		a.CoverageRadius, a.CoverageAngle,
@@ -397,6 +403,7 @@ func jsonToAsset(a defenseAssetJSON) domain.DefenseAsset {
 		domain.DefenseAssetPlacementType(a.PlacementType),
 		a.IconURL, a.ModelURL,
 		a.Score, priority,
+		a.CompoundProfile,
 		a.Tags,
 		a.LegacyItemID, a.CalculatorAssetID,
 		a.MapCatalogGroupIDs,

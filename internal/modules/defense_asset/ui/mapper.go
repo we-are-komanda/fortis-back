@@ -29,9 +29,48 @@ func defenseAssetToDTO(a *domain.DefenseAsset) DefenseAssetDTO {
 	if a.CompoundProfile() != nil {
 		cp := a.CompoundProfile()
 		compoundProfile = &CompoundProfileDTO{
-			Azimuth:        cp.Azimuth,
+			Kind:           cp.Kind,
+			PostType:       cp.PostType,
 			PersonnelCount: cp.PersonnelCount,
-			ArmamentUnits:  cp.ArmamentUnits,
+			Accountability: cp.Accountability,
+			Armament:       cp.Armament,
+			WeaponUnits:    cp.WeaponUnits,
+			SectorOrRange:  cp.SectorOrRange,
+			Azimuth:        cp.Azimuth,
+		}
+	}
+
+	var weaponSpec *WeaponSpecDTO
+	if a.WeaponSpec() != nil {
+		ws := a.WeaponSpec()
+		weaponSpec = &WeaponSpecDTO{
+			Caliber:        ws.Caliber,
+			AmmunitionType: ws.AmmunitionType,
+			OperationMode:  ws.OperationMode,
+			ModuleCount:    ws.ModuleCount,
+			IsManual:       ws.IsManual,
+		}
+	}
+
+	var detectionSpec *DetectionSpecDTO
+	if a.DetectionSpec() != nil {
+		ds := a.DetectionSpec()
+		detectionSpec = &DetectionSpecDTO{
+			FrequencyRange:   ds.FrequencyRange,
+			DetectionMode:    ds.DetectionMode,
+			RotationSpeed:    ds.RotationSpeed,
+			FieldOfView:      ds.FieldOfView,
+			HasThermalImager: ds.HasThermalImager,
+		}
+	}
+
+	var ewSpec *EWSpecDTO
+	if a.EWSpec() != nil {
+		es := a.EWSpec()
+		ewSpec = &EWSpecDTO{
+			FrequencyRange: es.FrequencyRange,
+			ActionRange:    es.ActionRange,
+			Azimuth:        es.Azimuth,
 		}
 	}
 
@@ -62,6 +101,9 @@ func defenseAssetToDTO(a *domain.DefenseAsset) DefenseAssetDTO {
 		Score:                 a.Score(),
 		Priority:              priority,
 		CompoundProfile:       compoundProfile,
+		WeaponSpec:            weaponSpec,
+		DetectionSpec:         detectionSpec,
+		EWSpec:                ewSpec,
 		Tags:                  a.Tags(),
 		LegacyItemID:          a.LegacyItemID(),
 		CalculatorAssetID:     a.CalculatorAssetID(),
@@ -94,9 +136,45 @@ func mapCreateRequestToDomain(req CreateDefenseAssetRequest) application.CreateI
 	var compoundProfile *domain.DefenseAssetCompoundProfile
 	if req.CompoundProfile != nil {
 		compoundProfile = &domain.DefenseAssetCompoundProfile{
-			Azimuth:        req.CompoundProfile.Azimuth,
+			Kind:           req.CompoundProfile.Kind,
+			PostType:       req.CompoundProfile.PostType,
 			PersonnelCount: req.CompoundProfile.PersonnelCount,
-			ArmamentUnits:  req.CompoundProfile.ArmamentUnits,
+			Accountability: req.CompoundProfile.Accountability,
+			Armament:       req.CompoundProfile.Armament,
+			WeaponUnits:    req.CompoundProfile.WeaponUnits,
+			SectorOrRange:  req.CompoundProfile.SectorOrRange,
+			Azimuth:        req.CompoundProfile.Azimuth,
+		}
+	}
+
+	var weaponSpec *domain.WeaponSpecification
+	if req.WeaponSpec != nil {
+		weaponSpec = &domain.WeaponSpecification{
+			Caliber:        req.WeaponSpec.Caliber,
+			AmmunitionType: req.WeaponSpec.AmmunitionType,
+			OperationMode:  req.WeaponSpec.OperationMode,
+			ModuleCount:    req.WeaponSpec.ModuleCount,
+			IsManual:       req.WeaponSpec.IsManual,
+		}
+	}
+
+	var detectionSpec *domain.DetectionSpecification
+	if req.DetectionSpec != nil {
+		detectionSpec = &domain.DetectionSpecification{
+			FrequencyRange:   req.DetectionSpec.FrequencyRange,
+			DetectionMode:    req.DetectionSpec.DetectionMode,
+			RotationSpeed:    req.DetectionSpec.RotationSpeed,
+			FieldOfView:      req.DetectionSpec.FieldOfView,
+			HasThermalImager: req.DetectionSpec.HasThermalImager,
+		}
+	}
+
+	var ewSpec *domain.EWSpecification
+	if req.EWSpec != nil {
+		ewSpec = &domain.EWSpecification{
+			FrequencyRange: req.EWSpec.FrequencyRange,
+			ActionRange:    req.EWSpec.ActionRange,
+			Azimuth:        req.EWSpec.Azimuth,
 		}
 	}
 
@@ -126,12 +204,53 @@ func mapCreateRequestToDomain(req CreateDefenseAssetRequest) application.CreateI
 		Score:                 req.Score,
 		Priority:              priority,
 		CompoundProfile:       compoundProfile,
+		WeaponSpec:            weaponSpec,
+		DetectionSpec:         detectionSpec,
+		EWSpec:                ewSpec,
 		Tags:                  req.Tags,
 		LegacyItemID:          req.LegacyItemID,
 		CalculatorAssetID:     req.CalculatorAssetID,
 		MapCatalogGroupIDs:    req.MapCatalogGroupIDs,
 		EnterpriseID:          req.EnterpriseID,
 		IsPublic:              req.IsPublic,
+	}
+}
+
+// mapSpecDTOtoDomain преобразует DTO спецификации в доменные типы.
+func mapWeaponSpecDTO(s *WeaponSpecDTO) *domain.WeaponSpecification {
+	if s == nil {
+		return nil
+	}
+	return &domain.WeaponSpecification{
+		Caliber:        s.Caliber,
+		AmmunitionType: s.AmmunitionType,
+		OperationMode:  s.OperationMode,
+		ModuleCount:    s.ModuleCount,
+		IsManual:       s.IsManual,
+	}
+}
+
+func mapDetectionSpecDTO(s *DetectionSpecDTO) *domain.DetectionSpecification {
+	if s == nil {
+		return nil
+	}
+	return &domain.DetectionSpecification{
+		FrequencyRange:   s.FrequencyRange,
+		DetectionMode:    s.DetectionMode,
+		RotationSpeed:    s.RotationSpeed,
+		FieldOfView:      s.FieldOfView,
+		HasThermalImager: s.HasThermalImager,
+	}
+}
+
+func mapEWSpecDTO(s *EWSpecDTO) *domain.EWSpecification {
+	if s == nil {
+		return nil
+	}
+	return &domain.EWSpecification{
+		FrequencyRange: s.FrequencyRange,
+		ActionRange:    s.ActionRange,
+		Azimuth:        s.Azimuth,
 	}
 }
 
@@ -203,11 +322,20 @@ func mapUpdateRequestToServiceInput(id string, req UpdateDefenseAssetRequest) ap
 	var compoundProfile *domain.DefenseAssetCompoundProfile
 	if req.CompoundProfile != nil {
 		compoundProfile = &domain.DefenseAssetCompoundProfile{
-			Azimuth:        req.CompoundProfile.Azimuth,
+			Kind:           req.CompoundProfile.Kind,
+			PostType:       req.CompoundProfile.PostType,
 			PersonnelCount: req.CompoundProfile.PersonnelCount,
-			ArmamentUnits:  req.CompoundProfile.ArmamentUnits,
+			Accountability: req.CompoundProfile.Accountability,
+			Armament:       req.CompoundProfile.Armament,
+			WeaponUnits:    req.CompoundProfile.WeaponUnits,
+			SectorOrRange:  req.CompoundProfile.SectorOrRange,
+			Azimuth:        req.CompoundProfile.Azimuth,
 		}
 	}
+
+	weaponSpec := mapWeaponSpecDTO(req.WeaponSpec)
+	detectionSpec := mapDetectionSpecDTO(req.DetectionSpec)
+	ewSpec := mapEWSpecDTO(req.EWSpec)
 
 	roles := make([]domain.DefenseAssetRole, len(req.Roles))
 	for i, r := range req.Roles {
@@ -246,6 +374,9 @@ func mapUpdateRequestToServiceInput(id string, req UpdateDefenseAssetRequest) ap
 		Score:                 req.Score,
 		Priority:              priority,
 		CompoundProfile:       compoundProfile,
+		WeaponSpec:            weaponSpec,
+		DetectionSpec:         detectionSpec,
+		EWSpec:                ewSpec,
 		Tags:                  req.Tags,
 		LegacyItemID:          legacyItemID,
 		CalculatorAssetID:     req.CalculatorAssetID,

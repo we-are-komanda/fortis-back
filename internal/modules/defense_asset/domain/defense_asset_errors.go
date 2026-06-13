@@ -20,4 +20,7 @@ var (
 
 	// ErrDefenseAssetInvalidPlacementType возвращается при неверном типе размещения.
 	ErrDefenseAssetInvalidPlacementType = errors.New("invalid defense asset placement type")
+
+	// ErrDefenseAssetInvalidSpecification возвращается при несовместимости спецификации и категории.
+	ErrDefenseAssetInvalidSpecification = errors.New("invalid defense asset specification for category")
 )

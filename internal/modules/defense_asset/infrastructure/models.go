@@ -10,6 +10,45 @@ import (
 	"github.com/fortis/backend/internal/modules/defense_asset/domain"
 )
 
+// compoundProfileDTO — промежуточная структура для сериализации/десериализации
+// DefenseAssetCompoundProfile в JSONB с обработкой обратной совместимости.
+type compoundProfileDTO struct {
+	Kind           string  `json:"kind,omitempty"`
+	PostType       string  `json:"postType,omitempty"`
+	PersonnelCount string  `json:"personnelCount,omitempty"`
+	Accountability string  `json:"accountability,omitempty"`
+	Armament       string  `json:"armament,omitempty"`
+	WeaponUnits    string  `json:"weaponUnits,omitempty"`
+	SectorOrRange  string  `json:"sectorOrRange,omitempty"`
+	Azimuth        float64 `json:"azimuth,omitempty"`
+}
+
+// UnmarshalJSON для compoundProfileDTO с поддержкой старого формата (int → string).
+func (c *compoundProfileDTO) UnmarshalJSON(data []byte) error {
+	type alias compoundProfileDTO
+	aux := &alias{}
+	if err := json.Unmarshal(data, aux); err == nil {
+		*c = compoundProfileDTO(*aux)
+		return nil
+	}
+
+	// Пробуем с преобразованием числа в строку для personnelCount
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if v, ok := raw["personnelCount"]; ok {
+		if val, ok := v.(float64); ok {
+			raw["personnelCount"] = fmt.Sprintf("%.0f", val)
+		}
+	}
+	fixed, err := json.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(fixed, (*alias)(c))
+}
+
 // DefenseAssetModel — GORM-модель для хранения DefenseAsset.
 type DefenseAssetModel struct {
 	ID           uuid.UUID  `gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
@@ -52,8 +91,11 @@ type AssetDataDTO struct {
 	ModelURL              string                       `json:"modelUrl,omitempty"`
 	Score                 *int                         `json:"score,omitempty"`
 	Priority              *string                      `json:"priority,omitempty"`
-	CompoundProfile       *domain.DefenseAssetCompoundProfile `json:"compoundProfile,omitempty"`
-	Tags                  []string                     `json:"tags,omitempty"`
+	CompoundProfile       *compoundProfileDTO              `json:"compoundProfile,omitempty"`
+	WeaponSpec            *domain.WeaponSpecification      `json:"weaponSpec,omitempty"`
+	DetectionSpec         *domain.DetectionSpecification    `json:"detectionSpec,omitempty"`
+	EWSpec                *domain.EWSpecification          `json:"ewSpec,omitempty"`
+	Tags                  []string                         `json:"tags,omitempty"`
 	LegacyItemID          string                       `json:"legacyItemId,omitempty"`
 	CalculatorAssetID     *string                      `json:"calculatorAssetId,omitempty"`
 	MapCatalogGroupIDs    []string                     `json:"mapCatalogGroupIds,omitempty"`
@@ -93,6 +135,21 @@ func (m *DefenseAssetModel) ToDomain() (*domain.DefenseAsset, error) {
 		eid = &s
 	}
 
+	// Конвертация compoundProfileDTO → domain.DefenseAssetCompoundProfile
+	var compoundProfile *domain.DefenseAssetCompoundProfile
+	if dto.CompoundProfile != nil {
+		compoundProfile = &domain.DefenseAssetCompoundProfile{
+			Kind:           dto.CompoundProfile.Kind,
+			PostType:       dto.CompoundProfile.PostType,
+			PersonnelCount: dto.CompoundProfile.PersonnelCount,
+			Accountability: dto.CompoundProfile.Accountability,
+			Armament:       dto.CompoundProfile.Armament,
+			WeaponUnits:    dto.CompoundProfile.WeaponUnits,
+			SectorOrRange:  dto.CompoundProfile.SectorOrRange,
+			Azimuth:        dto.CompoundProfile.Azimuth,
+		}
+	}
+
 	asset, err := domain.NewDefenseAsset(
 		dto.ID,
 		dto.Name,
@@ -119,7 +176,10 @@ func (m *DefenseAssetModel) ToDomain() (*domain.DefenseAsset, error) {
 		dto.ModelURL,
 		dto.Score,
 		priority,
-		dto.CompoundProfile,
+		compoundProfile,
+		dto.WeaponSpec,
+		dto.DetectionSpec,
+		dto.EWSpec,
 		dto.Tags,
 		dto.LegacyItemID,
 		dto.CalculatorAssetID,
@@ -163,6 +223,21 @@ func ToModel(asset *domain.DefenseAsset) (*DefenseAssetModel, error) {
 		priority = &p
 	}
 
+	// Конвертация domain.DefenseAssetCompoundProfile → compoundProfileDTO
+	var compoundProfile *compoundProfileDTO
+	if cp := asset.CompoundProfile(); cp != nil {
+		compoundProfile = &compoundProfileDTO{
+			Kind:           cp.Kind,
+			PostType:       cp.PostType,
+			PersonnelCount: cp.PersonnelCount,
+			Accountability: cp.Accountability,
+			Armament:       cp.Armament,
+			WeaponUnits:    cp.WeaponUnits,
+			SectorOrRange:  cp.SectorOrRange,
+			Azimuth:        cp.Azimuth,
+		}
+	}
+
 	cat := string(asset.Category())
 	dto := AssetDataDTO{
 		ID:                    asset.ID(),
@@ -190,7 +265,10 @@ func ToModel(asset *domain.DefenseAsset) (*DefenseAssetModel, error) {
 		ModelURL:              asset.ModelURL(),
 		Score:                 asset.Score(),
 		Priority:              priority,
-		CompoundProfile:       asset.CompoundProfile(),
+		CompoundProfile:       compoundProfile,
+		WeaponSpec:            asset.WeaponSpec(),
+		DetectionSpec:         asset.DetectionSpec(),
+		EWSpec:                asset.EWSpec(),
 		Tags:                  asset.Tags(),
 		LegacyItemID:          asset.LegacyItemID(),
 		CalculatorAssetID:     asset.CalculatorAssetID(),

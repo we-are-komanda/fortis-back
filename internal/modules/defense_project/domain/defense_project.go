@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	defenseAssetDomain "github.com/fortis/backend/internal/modules/defense_asset/domain"
+)
 
 // SchemaVersion текущая версия схемы DefenseProject.
 const SchemaVersion = 1
@@ -250,6 +254,7 @@ type DefenseAsset struct {
 	recommendedLayerCodes []string
 	compatibleLayerCodes  []string
 	incompatibleLayerCodes []string
+	protectionType        string
 	minEffectiveDistance  *float64
 	maxEffectiveDistance  *float64
 	coverageType          DefenseAssetCoverageType
@@ -261,6 +266,7 @@ type DefenseAsset struct {
 	modelURL              *string
 	score                 *int
 	priority              *DefensePriority
+	compoundProfile       *defenseAssetDomain.DefenseAssetCompoundProfile
 	tags                  []string
 	legacyItemID          *string
 	calculatorAssetID     *string
@@ -276,6 +282,7 @@ func NewDefenseAsset(
 	currency, unitLabel string,
 	compatibleLayerTypes []LayerGeometryType,
 	recommendedLayerCodes, compatibleLayerCodes, incompatibleLayerCodes []string,
+	protectionType string,
 	minEffectiveDistance, maxEffectiveDistance *float64,
 	coverageType DefenseAssetCoverageType,
 	coverageRadius, coverageAngle *float64,
@@ -284,6 +291,7 @@ func NewDefenseAsset(
 	iconURL, modelURL *string,
 	score *int,
 	priority *DefensePriority,
+	compoundProfile *defenseAssetDomain.DefenseAssetCompoundProfile,
 	tags []string,
 	legacyItemID, calculatorAssetID *string,
 	mapCatalogGroupIDs []string,
@@ -298,6 +306,7 @@ func NewDefenseAsset(
 		recommendedLayerCodes:  recommendedLayerCodes,
 		compatibleLayerCodes:   compatibleLayerCodes,
 		incompatibleLayerCodes: incompatibleLayerCodes,
+		protectionType:         protectionType,
 		minEffectiveDistance:   minEffectiveDistance,
 		maxEffectiveDistance:   maxEffectiveDistance,
 		coverageType:           coverageType,
@@ -307,6 +316,7 @@ func NewDefenseAsset(
 		placementType:          placementType,
 		iconURL: iconURL, modelURL: modelURL,
 		score: score, priority: priority,
+		compoundProfile: compoundProfile,
 		tags: tags,
 		legacyItemID: legacyItemID, calculatorAssetID: calculatorAssetID,
 		mapCatalogGroupIDs: mapCatalogGroupIDs,
@@ -327,6 +337,7 @@ func (a DefenseAsset) CompatibleLayerTypes() []LayerGeometryType { return a.comp
 func (a DefenseAsset) RecommendedLayerCodes() []string   { return a.recommendedLayerCodes }
 func (a DefenseAsset) CompatibleLayerCodes() []string    { return a.compatibleLayerCodes }
 func (a DefenseAsset) IncompatibleLayerCodes() []string  { return a.incompatibleLayerCodes }
+func (a DefenseAsset) ProtectionType() string            { return a.protectionType }
 func (a DefenseAsset) MinEffectiveDistance() *float64    { return a.minEffectiveDistance }
 func (a DefenseAsset) MaxEffectiveDistance() *float64    { return a.maxEffectiveDistance }
 func (a DefenseAsset) CoverageType() DefenseAssetCoverageType  { return a.coverageType }
@@ -338,6 +349,7 @@ func (a DefenseAsset) IconURL() *string                  { return a.iconURL }
 func (a DefenseAsset) ModelURL() *string                 { return a.modelURL }
 func (a DefenseAsset) Score() *int                       { return a.score }
 func (a DefenseAsset) Priority() *DefensePriority        { return a.priority }
+func (a DefenseAsset) CompoundProfile() *defenseAssetDomain.DefenseAssetCompoundProfile { return a.compoundProfile }
 func (a DefenseAsset) Tags() []string                    { return a.tags }
 func (a DefenseAsset) LegacyItemID() *string             { return a.legacyItemID }
 func (a DefenseAsset) CalculatorAssetID() *string        { return a.calculatorAssetID }

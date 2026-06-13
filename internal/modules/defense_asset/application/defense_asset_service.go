@@ -49,6 +49,9 @@ type CreateInput struct {
 	Score                 *int
 	Priority              *domain.DefensePriority
 	CompoundProfile       *domain.DefenseAssetCompoundProfile
+	WeaponSpec            *domain.WeaponSpecification
+	DetectionSpec         *domain.DetectionSpecification
+	EWSpec                *domain.EWSpecification
 	Tags                  []string
 	LegacyItemID          string
 	CalculatorAssetID     *string
@@ -89,6 +92,9 @@ func (s *DefenseAssetService) Create(ctx context.Context, input CreateInput) (*d
 		input.Score,
 		input.Priority,
 		input.CompoundProfile,
+		input.WeaponSpec,
+		input.DetectionSpec,
+		input.EWSpec,
 		input.Tags,
 		input.LegacyItemID,
 		input.CalculatorAssetID,
@@ -171,6 +177,9 @@ type UpdateInput struct {
 	Score                 *int
 	Priority              *domain.DefensePriority
 	CompoundProfile       *domain.DefenseAssetCompoundProfile
+	WeaponSpec            *domain.WeaponSpecification
+	DetectionSpec         *domain.DetectionSpecification
+	EWSpec                *domain.EWSpecification
 	Tags                  []string
 	LegacyItemID          *string
 	CalculatorAssetID     *string
@@ -265,6 +274,15 @@ func (s *DefenseAssetService) Update(ctx context.Context, input UpdateInput) (*d
 	}
 	if input.CompoundProfile != nil {
 		asset.SetCompoundProfile(input.CompoundProfile)
+	}
+	if input.WeaponSpec != nil {
+		asset.SetWeaponSpec(input.WeaponSpec)
+	}
+	if input.DetectionSpec != nil {
+		asset.SetDetectionSpec(input.DetectionSpec)
+	}
+	if input.EWSpec != nil {
+		asset.SetEWSpec(input.EWSpec)
 	}
 	if input.Tags != nil {
 		asset.SetTags(input.Tags)

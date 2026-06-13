@@ -70,6 +70,12 @@ type DefenseAssetDTO struct {
 	Priority *string `json:"priority,omitempty"`
 	// Профиль составной установки
 	CompoundProfile *CompoundProfileDTO `json:"compoundProfile,omitempty"`
+	// ТТХ оружия/установок
+	WeaponSpec *WeaponSpecDTO `json:"weaponSpec,omitempty"`
+	// ТТХ средств обнаружения
+	DetectionSpec *DetectionSpecDTO `json:"detectionSpec,omitempty"`
+	// ТТХ средств РЭБ/спуферов
+	EWSpec *EWSpecDTO `json:"ewSpec,omitempty"`
 	// Теги
 	Tags []string `json:"tags,omitempty"`
 	// ID устаревшего элемента
@@ -93,12 +99,70 @@ type DefenseAssetDTO struct {
 // CompoundProfileDTO DTO профиля составной установки.
 // swagger:model CompoundProfileDTO
 type CompoundProfileDTO struct {
+	// Тип профиля (compound-post)
+	// Example: compound-post
+	Kind string `json:"kind,omitempty"`
+	// Тип поста (МОГ, ПВН, ГОР, КПП)
+	// Example: МОГ
+	PostType string `json:"postType,omitempty"`
+	// Численность личного состава
+	// Example: 4
+	PersonnelCount string `json:"personnelCount,omitempty"`
+	// Подотчётность (МО, Росгвардия, ЧОП)
+	// Example: МО
+	Accountability string `json:"accountability,omitempty"`
+	// Вооружение (одна строка)
+	// Example: Автомат/пулемёт/ПБС
+	Armament string `json:"armament,omitempty"`
+	// Количество единиц вооружения
+	// Example: 2
+	WeaponUnits string `json:"weaponUnits,omitempty"`
+	// Сектор/дальность
+	// Example: до 4-8 км, сектор 90-360°
+	SectorOrRange string `json:"sectorOrRange,omitempty"`
 	// Азимут
 	Azimuth float64 `json:"azimuth,omitempty"`
-	// Численность личного состава
-	PersonnelCount int `json:"personnelCount,omitempty"`
-	// Единицы вооружения
-	ArmamentUnits []string `json:"armamentUnits,omitempty"`
+}
+
+// WeaponSpecDTO DTO ТТХ оружия/установок.
+// swagger:model WeaponSpecDTO
+type WeaponSpecDTO struct {
+	// Калибр
+	Caliber *string `json:"caliber,omitempty"`
+	// Тип боеприпаса
+	AmmunitionType *string `json:"ammunitionType,omitempty"`
+	// Режим работы (ручная/автоматическая)
+	OperationMode *string `json:"operationMode,omitempty"`
+	// Количество модулей
+	ModuleCount *int `json:"moduleCount,omitempty"`
+	// Ручной режим
+	IsManual *bool `json:"isManual,omitempty"`
+}
+
+// DetectionSpecDTO DTO ТТХ средств обнаружения.
+// swagger:model DetectionSpecDTO
+type DetectionSpecDTO struct {
+	// Диапазон частот обнаружения
+	FrequencyRange *string `json:"frequencyRange,omitempty"`
+	// Режим обнаружения (активный/пассивный)
+	DetectionMode *string `json:"detectionMode,omitempty"`
+	// Скорость оборота (для активной РЛС)
+	RotationSpeed *float64 `json:"rotationSpeed,omitempty"`
+	// Поле зрения (градусы)
+	FieldOfView *float64 `json:"fieldOfView,omitempty"`
+	// Наличие тепловизора
+	HasThermalImager *bool `json:"hasThermalImager,omitempty"`
+}
+
+// EWSpecDTO DTO ТТХ средств РЭБ/спуферов.
+// swagger:model EWSpecDTO
+type EWSpecDTO struct {
+	// Диапазон частот
+	FrequencyRange *string `json:"frequencyRange,omitempty"`
+	// Дальность/зона действия (км)
+	ActionRange *float64 `json:"actionRange,omitempty"`
+	// Азимут
+	Azimuth *float64 `json:"azimuth,omitempty"`
 }
 
 // CreateDefenseAssetRequest DTO запроса на создание средства защиты.
@@ -167,6 +231,12 @@ type CreateDefenseAssetRequest struct {
 	Priority *string `json:"priority,omitempty"`
 	// Профиль составной установки
 	CompoundProfile *CompoundProfileDTO `json:"compoundProfile,omitempty"`
+	// ТТХ оружия/установок
+	WeaponSpec *WeaponSpecDTO `json:"weaponSpec,omitempty"`
+	// ТТХ средств обнаружения
+	DetectionSpec *DetectionSpecDTO `json:"detectionSpec,omitempty"`
+	// ТТХ средств РЭБ/спуферов
+	EWSpec *EWSpecDTO `json:"ewSpec,omitempty"`
 	// Теги
 	Tags []string `json:"tags,omitempty"`
 	// ID устаревшего элемента
@@ -240,6 +310,12 @@ type UpdateDefenseAssetRequest struct {
 	Priority *string `json:"priority,omitempty"`
 	// Профиль составной установки
 	CompoundProfile *CompoundProfileDTO `json:"compoundProfile,omitempty"`
+	// ТТХ оружия/установок
+	WeaponSpec *WeaponSpecDTO `json:"weaponSpec,omitempty"`
+	// ТТХ средств обнаружения
+	DetectionSpec *DetectionSpecDTO `json:"detectionSpec,omitempty"`
+	// ТТХ средств РЭБ/спуферов
+	EWSpec *EWSpecDTO `json:"ewSpec,omitempty"`
 	// Теги
 	Tags []string `json:"tags,omitempty"`
 	// ID устаревшего элемента

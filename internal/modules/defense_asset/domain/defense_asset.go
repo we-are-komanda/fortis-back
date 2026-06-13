@@ -145,11 +145,41 @@ var ValidDefensePriorities = []DefensePriority{
 	DefensePriorityLow,
 }
 
-// DefenseAssetCompoundProfile — профиль составной установки (МОГ).
+// DefenseAssetCompoundProfile — профиль составной установки (МОГ, ПВН, ГОР, КПП).
 type DefenseAssetCompoundProfile struct {
-	Azimuth         float64  `json:"azimuth,omitempty"`
-	PersonnelCount  int      `json:"personnelCount,omitempty"`
-	ArmamentUnits   []string `json:"armamentUnits,omitempty"`
+	Kind           string  `json:"kind,omitempty"`
+	PostType       string  `json:"postType,omitempty"`
+	PersonnelCount string  `json:"personnelCount,omitempty"`
+	Accountability string  `json:"accountability,omitempty"`
+	Armament       string  `json:"armament,omitempty"`
+	WeaponUnits    string  `json:"weaponUnits,omitempty"`
+	SectorOrRange  string  `json:"sectorOrRange,omitempty"`
+	Azimuth        float64 `json:"azimuth,omitempty"`
+}
+
+// WeaponSpecification — ТТХ для оружия/установок.
+type WeaponSpecification struct {
+	Caliber        *string `json:"caliber,omitempty"`
+	AmmunitionType *string `json:"ammunitionType,omitempty"`
+	OperationMode  *string `json:"operationMode,omitempty"`
+	ModuleCount    *int    `json:"moduleCount,omitempty"`
+	IsManual       *bool   `json:"isManual,omitempty"`
+}
+
+// DetectionSpecification — ТТХ для средств обнаружения.
+type DetectionSpecification struct {
+	FrequencyRange  *string  `json:"frequencyRange,omitempty"`
+	DetectionMode   *string  `json:"detectionMode,omitempty"`
+	RotationSpeed   *float64 `json:"rotationSpeed,omitempty"`
+	FieldOfView     *float64 `json:"fieldOfView,omitempty"`
+	HasThermalImager *bool   `json:"hasThermalImager,omitempty"`
+}
+
+// EWSpecification — ТТХ для средств РЭБ/спуферов.
+type EWSpecification struct {
+	FrequencyRange *string  `json:"frequencyRange,omitempty"`
+	ActionRange    *float64 `json:"actionRange,omitempty"`
+	Azimuth        *float64 `json:"azimuth,omitempty"`
 }
 
 // LayerType — тип слоя карты.
@@ -183,6 +213,9 @@ type DefenseAsset struct {
 	score                 *int
 	priority              *DefensePriority
 	compoundProfile       *DefenseAssetCompoundProfile
+	weaponSpec            *WeaponSpecification
+	detectionSpec         *DetectionSpecification
+	ewSpec                *EWSpecification
 	tags                  []string
 	legacyItemID          string
 	calculatorAssetID     *string
@@ -210,9 +243,12 @@ func NewDefenseAsset(
 	placementType PlacementType,
 	iconURL, modelURL string,
 	score *int,
-	priority *DefensePriority,
-	compoundProfile *DefenseAssetCompoundProfile,
-	tags []string,
+	priority              *DefensePriority,
+	compoundProfile       *DefenseAssetCompoundProfile,
+	weaponSpec            *WeaponSpecification,
+	detectionSpec         *DetectionSpecification,
+	ewSpec                *EWSpecification,
+	tags                  []string,
 	legacyItemID string,
 	calculatorAssetID *string,
 	mapCatalogGroupIDs []string,
@@ -266,6 +302,10 @@ func NewDefenseAsset(
 		return nil, fmt.Errorf("%w: %s", ErrDefenseAssetInvalidPlacementType, placementType)
 	}
 
+	if err := validateCategorySpecCompatibility(category, weaponSpec, detectionSpec, ewSpec); err != nil {
+		return nil, err
+	}
+
 	return &DefenseAsset{
 		id:                    id,
 		name:                  name,
@@ -293,6 +333,9 @@ func NewDefenseAsset(
 		score:                 score,
 		priority:              priority,
 		compoundProfile:       compoundProfile,
+		weaponSpec:            weaponSpec,
+		detectionSpec:         detectionSpec,
+		ewSpec:                ewSpec,
 		tags:                  tags,
 		legacyItemID:          legacyItemID,
 		calculatorAssetID:     calculatorAssetID,
@@ -331,6 +374,9 @@ func (a *DefenseAsset) ModelURL() string                     { return a.modelURL
 func (a *DefenseAsset) Score() *int                          { return a.score }
 func (a *DefenseAsset) Priority() *DefensePriority           { return a.priority }
 func (a *DefenseAsset) CompoundProfile() *DefenseAssetCompoundProfile { return a.compoundProfile }
+func (a *DefenseAsset) WeaponSpec() *WeaponSpecification            { return a.weaponSpec }
+func (a *DefenseAsset) DetectionSpec() *DetectionSpecification      { return a.detectionSpec }
+func (a *DefenseAsset) EWSpec() *EWSpecification                   { return a.ewSpec }
 func (a *DefenseAsset) Tags() []string                       { return a.tags }
 func (a *DefenseAsset) LegacyItemID() string                 { return a.legacyItemID }
 func (a *DefenseAsset) CalculatorAssetID() *string           { return a.calculatorAssetID }
@@ -367,6 +413,9 @@ func (a *DefenseAsset) SetModelURL(v string)        { a.modelURL = v; a.updatedA
 func (a *DefenseAsset) SetScore(v *int)             { a.score = v; a.updatedAt = time.Now().UTC() }
 func (a *DefenseAsset) SetPriority(v *DefensePriority)    { a.priority = v; a.updatedAt = time.Now().UTC() }
 func (a *DefenseAsset) SetCompoundProfile(v *DefenseAssetCompoundProfile) { a.compoundProfile = v; a.updatedAt = time.Now().UTC() }
+func (a *DefenseAsset) SetWeaponSpec(v *WeaponSpecification)              { a.weaponSpec = v; a.updatedAt = time.Now().UTC() }
+func (a *DefenseAsset) SetDetectionSpec(v *DetectionSpecification)        { a.detectionSpec = v; a.updatedAt = time.Now().UTC() }
+func (a *DefenseAsset) SetEWSpec(v *EWSpecification)                      { a.ewSpec = v; a.updatedAt = time.Now().UTC() }
 func (a *DefenseAsset) SetTags(v []string)          { a.tags = v; a.updatedAt = time.Now().UTC() }
 func (a *DefenseAsset) SetLegacyItemID(v string)    { a.legacyItemID = v; a.updatedAt = time.Now().UTC() }
 func (a *DefenseAsset) SetCalculatorAssetID(v *string)   { a.calculatorAssetID = v; a.updatedAt = time.Now().UTC() }
@@ -405,6 +454,44 @@ func (a *DefenseAsset) UpdateCoverageType(ct DefenseAssetCoverageType) error {
 	}
 	a.coverageType = ct
 	a.updatedAt = time.Now().UTC()
+	return nil
+}
+
+// validateCategorySpecCompatibility проверяет, что спецификация соответствует категории.
+func validateCategorySpecCompatibility(
+	category DefenseAssetCategory,
+	weaponSpec *WeaponSpecification,
+	detectionSpec *DetectionSpecification,
+	ewSpec *EWSpecification,
+) error {
+	// Определяем категории, совместимые с каждым типом спецификации
+	weaponCategories := map[DefenseAssetCategory]bool{
+		DefenseAssetCategoryArtillery:   true,
+		DefenseAssetCategoryMissile:     true,
+		DefenseAssetCategoryAntiMissile: true,
+		DefenseAssetCategoryShturmovaya: true,
+		DefenseAssetCategoryAircraft:    true,
+		DefenseAssetCategoryHelicopter:  true,
+		DefenseAssetCategoryUAV:         true,
+		DefenseAssetCategoryShip:        true,
+	}
+	detectionCategories := map[DefenseAssetCategory]bool{
+		DefenseAssetCategoryRadiotechnical: true,
+		DefenseAssetCategoryRadar:          true,
+	}
+	ewCategories := map[DefenseAssetCategory]bool{
+		DefenseAssetCategoryEW: true,
+	}
+
+	if weaponSpec != nil && !weaponCategories[category] {
+		return fmt.Errorf("%w: weapon specification is not compatible with category %s", ErrDefenseAssetInvalidSpecification, category)
+	}
+	if detectionSpec != nil && !detectionCategories[category] {
+		return fmt.Errorf("%w: detection specification is not compatible with category %s", ErrDefenseAssetInvalidSpecification, category)
+	}
+	if ewSpec != nil && !ewCategories[category] {
+		return fmt.Errorf("%w: ew specification is not compatible with category %s", ErrDefenseAssetInvalidSpecification, category)
+	}
 	return nil
 }
 

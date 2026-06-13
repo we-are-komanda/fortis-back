@@ -52,7 +52,9 @@ func testAsset(id, name string) *domain.DefenseAsset {
 		id, name, "", "", cat, nil, nil, "RUB", "", nil, nil, nil, nil, "",
 		nil, nil, ct, nil, nil,
 		domain.DeploymentTypeStatic, domain.PlacementTypeMapObject,
-		"", "", nil, nil, nil, nil, "", nil, nil,
+		"", "", nil, nil, nil,
+		nil, nil, nil,
+		nil, "", nil, nil,
 		&eid, false, now, now,
 	)
 	return asset
