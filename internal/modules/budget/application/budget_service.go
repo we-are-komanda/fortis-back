@@ -262,3 +262,215 @@ func groupByType(lines []budgetDomain.EstimateLine) []budgetDomain.TypeEstimate 
 func round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
+
+// CompareConfigs сравнивает две конфигурации проектов.
+func (s *BudgetService) CompareConfigs(ctx context.Context, projectID1, projectID2 string) (*budgetDomain.ConfigComparison, error) {
+	if projectID1 == "" || projectID2 == "" {
+		return nil, budgetDomain.ErrBothIDsRequired
+	}
+
+	projectA, err := s.projectRepo.FindByID(ctx, projectID1)
+	if err != nil {
+		return nil, fmt.Errorf("load project A: %w", err)
+	}
+
+	projectB, err := s.projectRepo.FindByID(ctx, projectID2)
+	if err != nil {
+		return nil, fmt.Errorf("load project B: %w", err)
+	}
+
+	calcA, err := s.CalculateCost(ctx, projectID1)
+	if err != nil {
+		return nil, fmt.Errorf("calculate cost for A: %w", err)
+	}
+
+	calcB, err := s.CalculateCost(ctx, projectID2)
+	if err != nil {
+		return nil, fmt.Errorf("calculate cost for B: %w", err)
+	}
+
+	profileA := buildStructuralProfile(projectA, calcA)
+	profileB := buildStructuralProfile(projectB, calcB)
+
+	snapshotA := budgetDomain.NewConfigSnapshot(projectID1, projectA.ProjectName(), profileA, *calcA)
+	snapshotB := budgetDomain.NewConfigSnapshot(projectID2, projectB.ProjectName(), profileB, *calcB)
+
+	diff := computeDiff(profileA, profileB, *calcA, *calcB)
+
+	comparison := budgetDomain.NewConfigComparison(snapshotA, snapshotB, diff)
+	return &comparison, nil
+}
+
+// buildStructuralProfile строит структурный профиль из DefenseProject.
+func buildStructuralProfile(project *defenseDomain.DefenseProject, calc *budgetDomain.CostCalculation) budgetDomain.StructuralProfile {
+	placedObjects := project.PlacedObjects()
+	layers := project.Layers()
+
+	// Строим индекс слоёв
+	layerMap := make(map[string]defenseDomain.EditableDefenseLayer)
+	for _, l := range layers {
+		layerMap[l.ID()] = l
+	}
+
+	// Строим индекс категорий ассетов
+	assetMap := make(map[string]defenseDomain.DefenseAsset)
+	for _, a := range project.AssetLibrary() {
+		assetMap[a.ID()] = a
+	}
+
+	// Считаем метрики по слоям
+	type echelonStats struct {
+		layerID      string
+		objectCount  int
+		unitCount    int
+		categories   map[string]struct{}
+		conflictCount int
+		coveredCount int
+	}
+
+	echelonStatsMap := make(map[string]*echelonStats)
+	echelonOrder := make([]string, 0)
+
+	for _, obj := range placedObjects {
+		layerID := obj.LayerID()
+		stats, exists := echelonStatsMap[layerID]
+		if !exists {
+			stats = &echelonStats{
+				layerID:    layerID,
+				categories: make(map[string]struct{}),
+			}
+			echelonStatsMap[layerID] = stats
+			echelonOrder = append(echelonOrder, layerID)
+		}
+
+		stats.objectCount++
+		stats.unitCount += obj.Quantity()
+		if obj.HasGeometryConflict() || obj.HasCoverageConflict() || obj.HasTerrainConflict() {
+			stats.conflictCount++
+		}
+
+		// Определяем категорию ассета
+		if asset, ok := assetMap[obj.AssetID()]; ok {
+			stats.categories[string(asset.Category())] = struct{}{}
+		}
+
+		// covered: если у объекта нет конфликтов покрытия — считаем покрытым
+		if !obj.HasCoverageConflict() {
+			stats.coveredCount++
+		}
+	}
+
+	// Собираем глобальные метрики
+	var totalObjects, totalUnits, totalConflicts, totalCovered int
+	allCategories := make(map[string]struct{})
+	byEchelon := make([]budgetDomain.StructuralEchelonProfile, 0, len(echelonOrder))
+
+	for _, layerID := range echelonOrder {
+		stats := echelonStatsMap[layerID]
+		totalObjects += stats.objectCount
+		totalUnits += stats.unitCount
+		totalConflicts += stats.conflictCount
+		totalCovered += stats.coveredCount
+
+		for c := range stats.categories {
+			allCategories[c] = struct{}{}
+		}
+
+		layer := layerMap[layerID]
+		ep, _ := budgetDomain.NewStructuralEchelonProfile(
+			layerID,
+			layer.Code(),
+			layer.Name(),
+			stats.objectCount,
+			stats.unitCount,
+			len(stats.categories),
+			stats.conflictCount,
+			stats.coveredCount,
+		)
+		byEchelon = append(byEchelon, ep)
+	}
+
+	totalEchelons := len(echelonOrder)
+	totalCategories := len(allCategories)
+	totalMln := 0.0
+	if calc != nil {
+		totalMln = calc.TotalMln()
+	}
+
+	return budgetDomain.NewStructuralProfile(
+		totalObjects,
+		totalUnits,
+		totalEchelons,
+		totalCategories,
+		totalConflicts,
+		totalCovered,
+		totalMln,
+		byEchelon,
+	)
+}
+
+// computeDiff вычисляет разницу между двумя структурными профилями и расчётами стоимости.
+func computeDiff(profileA, profileB budgetDomain.StructuralProfile, calcA, calcB budgetDomain.CostCalculation) budgetDomain.ConfigDiff {
+	// Разница по эшелонам — объединяем по LayerID
+	echelonMapA := make(map[string]budgetDomain.StructuralEchelonProfile)
+	for _, ep := range profileA.ByEchelon() {
+		echelonMapA[ep.LayerID()] = ep
+	}
+
+	echelonMapB := make(map[string]budgetDomain.StructuralEchelonProfile)
+	for _, ep := range profileB.ByEchelon() {
+		echelonMapB[ep.LayerID()] = ep
+	}
+
+	// Собираем все LayerID из обоих профилей
+	allLayerIDs := make(map[string]struct{})
+	for _, ep := range profileA.ByEchelon() {
+		allLayerIDs[ep.LayerID()] = struct{}{}
+	}
+	for _, ep := range profileB.ByEchelon() {
+		allLayerIDs[ep.LayerID()] = struct{}{}
+	}
+
+	byEchelonDiff := make([]budgetDomain.EchelonDiff, 0, len(allLayerIDs))
+	for layerID := range allLayerIDs {
+		epA := echelonMapA[layerID]
+		epB := echelonMapB[layerID]
+
+		layerCode := epA.LayerCode()
+		if layerCode == "" {
+			layerCode = epB.LayerCode()
+		}
+		layerName := epA.LayerName()
+		if layerName == "" {
+			layerName = epB.LayerName()
+		}
+
+		diff := budgetDomain.NewEchelonDiff(
+			layerID,
+			layerCode,
+			layerName,
+			epB.ObjectCount()-epA.ObjectCount(),
+			epB.UnitCount()-epA.UnitCount(),
+			epB.CategoryCount()-epA.CategoryCount(),
+			epB.ConflictCount()-epA.ConflictCount(),
+			epB.CoveredObjCount()-epA.CoveredObjCount(),
+		)
+		byEchelonDiff = append(byEchelonDiff, diff)
+	}
+
+	// Если нет эшелонов — пустой слайс, но не nil
+	if byEchelonDiff == nil {
+		byEchelonDiff = []budgetDomain.EchelonDiff{}
+	}
+
+	return budgetDomain.NewConfigDiff(
+		profileB.ObjectCount()-profileA.ObjectCount(),
+		profileB.UnitCount()-profileA.UnitCount(),
+		profileB.EchelonCount()-profileA.EchelonCount(),
+		profileB.CategoryCount()-profileA.CategoryCount(),
+		profileB.ConflictCount()-profileA.ConflictCount(),
+		profileB.CoveredObjCount()-profileA.CoveredObjCount(),
+		round2(calcB.TotalMln()-calcA.TotalMln()),
+		byEchelonDiff,
+	)
+}

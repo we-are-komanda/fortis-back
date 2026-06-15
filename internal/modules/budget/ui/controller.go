@@ -17,6 +17,7 @@ type BudgetServiceInterface interface {
 	UpdateBudgetConfig(ctx context.Context, projectID string, mode domain.BudgetMode, amountMln float64) error
 	CalculateCost(ctx context.Context, projectID string) (*domain.CostCalculation, error)
 	CheckBudget(ctx context.Context, projectID string, input domain.BudgetCheckInput) (*domain.BudgetCheckResult, error)
+	CompareConfigs(ctx context.Context, projectID1, projectID2 string) (*domain.ConfigComparison, error)
 }
 
 // BudgetController — контроллер для API бюджета и стоимости.
@@ -227,6 +228,53 @@ func (c *BudgetController) CheckBudget(ctx *fasthttp.RequestCtx) {
 	}
 
 	resp := checkResultToDTO(result)
+	respJSON, err := json.Marshal(resp)
+	if err != nil {
+		handlers.ErrorHandler(ctx, "internal_error", "failed to marshal response", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
+		return
+	}
+
+	ctx.SetBody(respJSON)
+}
+
+// swagger:route GET /api/v1/projects/compare api compareConfigs
+// Сравнить две конфигурации проектов
+//
+// Возвращает структурный профиль и стоимость для каждой конфигурации,
+// а также diff между ними.
+//
+// Produces:
+//   - application/json
+//
+// Responses:
+//
+//	200: ConfigComparisonResponse
+//	400: description: Bad Request — не указаны ID проектов
+//	404: description: Not Found — проект не найден
+//	500: description: Internal Server Error
+func (c *BudgetController) Compare(ctx *fasthttp.RequestCtx) {
+	projectID1 := string(ctx.QueryArgs().Peek("id1"))
+	projectID2 := string(ctx.QueryArgs().Peek("id2"))
+
+	if projectID1 == "" || projectID2 == "" {
+		handlers.ErrorHandler(ctx, "validation_error", "both id1 and id2 query parameters are required", &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
+		return
+	}
+
+	comp, err := c.service.CompareConfigs(ctx, projectID1, projectID2)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrBothIDsRequired):
+			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
+		case errors.Is(err, domain.ErrComparisonFailed):
+			handlers.ErrorHandler(ctx, "comparison_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
+		default:
+			handlers.ErrorHandler(ctx, "internal_error", "failed to compare configs", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
+		}
+		return
+	}
+
+	resp := comparisonToDTO(comp)
 	respJSON, err := json.Marshal(resp)
 	if err != nil {
 		handlers.ErrorHandler(ctx, "internal_error", "failed to marshal response", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
