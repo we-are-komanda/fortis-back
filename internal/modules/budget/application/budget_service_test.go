@@ -509,7 +509,7 @@ func TestBuildStructuralProfile(t *testing.T) {
 
 	project := makeTestProject(t)
 	calc := budgetDomain.NewCostCalculation(180, nil, nil, nil)
-	profile := buildStructuralProfile(project, &calc)
+	profile := BuildStructuralProfile(project, &calc)
 
 	if profile.ObjectCount() <= 0 {
 		t.Errorf("ObjectCount() = %d, want > 0", profile.ObjectCount())

@@ -7,6 +7,7 @@ import (
 	defenseUi "github.com/fortis/backend/internal/modules/defense_project/ui"
 	enterpriseUi "github.com/fortis/backend/internal/modules/enterprise/ui"
 	"github.com/fortis/backend/internal/modules/platform/ui"
+	reportUi "github.com/fortis/backend/internal/modules/report/ui"
 )
 
 //go:cover off
@@ -19,6 +20,7 @@ func (app *Application) registerHandlers(r *router.Router) error {
 			defenseAssetController *defenseAssetUi.DefenseAssetController,
 			documentController *defenseAssetUi.DocumentController,
 			budgetController *budgetUi.BudgetController,
+			reportController *reportUi.ReportController,
 		) {
 			r.GET("/api/v1/example", exampleController.Get)
 			r.POST("/api/v1/projects/import", defenseProjectController.Import)
@@ -49,6 +51,9 @@ func (app *Application) registerHandlers(r *router.Router) error {
 			r.GET("/api/v1/projects/cost", budgetController.CalculateCost)
 			r.POST("/api/v1/projects/budget/check", budgetController.CheckBudget)
 			r.GET("/api/v1/projects/compare", budgetController.Compare)
+
+			// Report routes
+			r.GET("/api/v1/projects/report", reportController.Get)
 		})
 
 	return err

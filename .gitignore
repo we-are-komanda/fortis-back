@@ -24,8 +24,8 @@ tasks/
 *.dll
 *.so
 *.dylib
-app
-app-cmd
+/app
+/app-cmd
 
 # Air live-reload build dir
 tmp/
@@ -39,7 +39,7 @@ openapi3.json
 
 # Coverage artifacts
 coverage.out
-report/
+/report/
 
 # Vendor (not used)
 vendor/

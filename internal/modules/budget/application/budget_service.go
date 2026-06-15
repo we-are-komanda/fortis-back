@@ -289,8 +289,8 @@ func (s *BudgetService) CompareConfigs(ctx context.Context, projectID1, projectI
 		return nil, fmt.Errorf("calculate cost for B: %w", err)
 	}
 
-	profileA := buildStructuralProfile(projectA, calcA)
-	profileB := buildStructuralProfile(projectB, calcB)
+	profileA := BuildStructuralProfile(projectA, calcA)
+	profileB := BuildStructuralProfile(projectB, calcB)
 
 	snapshotA := budgetDomain.NewConfigSnapshot(projectID1, projectA.ProjectName(), profileA, *calcA)
 	snapshotB := budgetDomain.NewConfigSnapshot(projectID2, projectB.ProjectName(), profileB, *calcB)
@@ -301,8 +301,8 @@ func (s *BudgetService) CompareConfigs(ctx context.Context, projectID1, projectI
 	return &comparison, nil
 }
 
-// buildStructuralProfile строит структурный профиль из DefenseProject.
-func buildStructuralProfile(project *defenseDomain.DefenseProject, calc *budgetDomain.CostCalculation) budgetDomain.StructuralProfile {
+// BuildStructuralProfile строит структурный профиль из DefenseProject.
+func BuildStructuralProfile(project *defenseDomain.DefenseProject, calc *budgetDomain.CostCalculation) budgetDomain.StructuralProfile {
 	placedObjects := project.PlacedObjects()
 	layers := project.Layers()
 

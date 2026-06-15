@@ -18,6 +18,8 @@ import (
 	platformApp "github.com/fortis/backend/internal/modules/platform/application"
 	"github.com/fortis/backend/internal/modules/platform/infrastructure"
 	platformUi "github.com/fortis/backend/internal/modules/platform/ui"
+	reportApp "github.com/fortis/backend/internal/modules/report/application"
+	reportUi "github.com/fortis/backend/internal/modules/report/ui"
 	"github.com/fortis/backend/internal/probe"
 	"github.com/fortis/backend/internal/rdbms"
 	"go.uber.org/dig"
@@ -89,9 +91,16 @@ func (app *Application) provideDependencies() {
 	err = app.container.Provide(budgetUi.NewBudgetController)
 	processError(err)
 	err = app.container.Provide(budgetApp.NewBudgetService,
-		dig.As(new(budgetUi.BudgetServiceInterface)))
+		dig.As(new(budgetUi.BudgetServiceInterface), new(reportApp.BudgetServiceInterface)))
 	processError(err)
 	err = app.container.Provide(budgetInfra.NewBudgetConfigRepository,
 		dig.As(new(budgetDomain.BudgetConfigRepositoryInterface)))
+	processError(err)
+
+	// Report module
+	err = app.container.Provide(reportUi.NewReportController)
+	processError(err)
+	err = app.container.Provide(reportApp.NewReportService,
+		dig.As(new(reportUi.ReportServiceInterface)))
 	processError(err)
 }
