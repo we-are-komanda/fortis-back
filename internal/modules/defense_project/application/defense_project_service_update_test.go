@@ -10,10 +10,12 @@ import (
 )
 
 // newExistingProject создаёт сохранённый проект для тестов UpdateProject.
-func newExistingProject(t *testing.T, id, name string, placed []domain.PlacedDefenseObject) *domain.DefenseProject {
+//
+//nolint:unparam // name and id intentionally hardcoded for tests
+func newExistingProject(t *testing.T, name string, placed []domain.PlacedDefenseObject) *domain.DefenseProject {
 	t.Helper()
 	project, err := domain.NewDefenseProject(
-		id, name, "", "Existing Project",
+		"p1", name, "", "Existing Project",
 		domain.NewProtectedObject("obj-0", "Obj0", domain.NewCoordinates(55.0, 37.0)),
 		nil, nil, placed,
 		nil, nil, nil,
@@ -30,7 +32,7 @@ func TestUpdateProjectOverwritesContentWhenProjectJSONProvided(t *testing.T) {
 	repo := newMockRepo()
 	service := NewDefenseProjectService(repo)
 
-	existing := newExistingProject(t, "p1", "Original", nil)
+	existing := newExistingProject(t, "Original", nil)
 	repo.projects["p1"] = existing
 
 	projectJSON := `{
@@ -61,7 +63,7 @@ func TestUpdateProjectOverwritePreservesVersion(t *testing.T) {
 	repo := newMockRepo()
 	service := NewDefenseProjectService(repo)
 
-	existing := newExistingProject(t, "p1", "Original", nil)
+	existing := newExistingProject(t, "Original", nil)
 	// Симулируем уже несколько раз сохранённый проект (optimistic-lock версия != 1).
 	existing.SetVersion(3)
 	repo.projects["p1"] = existing
@@ -96,7 +98,7 @@ func TestUpdateProjectOverwriteInvalidSchemaVersion(t *testing.T) {
 	repo := newMockRepo()
 	service := NewDefenseProjectService(repo)
 
-	existing := newExistingProject(t, "p1", "Original", nil)
+	existing := newExistingProject(t, "Original", nil)
 	repo.projects["p1"] = existing
 
 	projectJSON := `{
@@ -124,7 +126,7 @@ func TestUpdateProjectMetadataOnlyWhenNoProjectJSON(t *testing.T) {
 			time.Now().UTC(), time.Now().UTC(),
 		),
 	}
-	existing := newExistingProject(t, "p1", "Original", placed)
+	existing := newExistingProject(t, "Original", placed)
 	repo.projects["p1"] = existing
 
 	project, err := service.UpdateProject(context.Background(), "p1", "OnlyName", "", "")

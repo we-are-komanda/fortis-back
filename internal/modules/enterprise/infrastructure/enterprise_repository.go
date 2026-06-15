@@ -9,6 +9,16 @@ import (
 	"gorm.io/gorm"
 )
 
+// userEnterpriseModel — GORM-модель для связи пользователя и предприятия.
+type userEnterpriseModel struct {
+	UserID       string `gorm:"primaryKey;type:uuid"`
+	EnterpriseID string `gorm:"primaryKey;type:uuid"`
+}
+
+func (userEnterpriseModel) TableName() string {
+	return "user_enterprises"
+}
+
 // EnterpriseRepository — реализация репозитория Enterprise.
 type EnterpriseRepository struct {
 	executor rdbms.Executor
@@ -100,4 +110,76 @@ func (r *EnterpriseRepository) Delete(ctx context.Context, id string) error {
 		return domain.ErrEnterpriseNotFound
 	}
 	return nil
+}
+
+// FindAllByUserID возвращает предприятия, доступные пользователю, с пагинацией.
+func (r *EnterpriseRepository) FindAllByUserID(ctx context.Context, userID string, limit, offset int) ([]*domain.Enterprise, int64, error) {
+	db := r.executor.WithContext(ctx)
+
+	var total int64
+	if err := db.Model(&EnterpriseModel{}).
+		Joins("JOIN user_enterprises ON enterprises.id = user_enterprises.enterprise_id").
+		Where("user_enterprises.user_id = ?", userID).
+		Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	if limit <= 0 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	var models []EnterpriseModel
+	if err := db.Joins("JOIN user_enterprises ON enterprises.id = user_enterprises.enterprise_id").
+		Where("user_enterprises.user_id = ?", userID).
+		Order("enterprises.created_at DESC").
+		Limit(limit).Offset(offset).
+		Find(&models).Error; err != nil {
+		return nil, 0, err
+	}
+
+	enterprises := make([]*domain.Enterprise, len(models))
+	for i, m := range models {
+		enterprises[i] = m.ToDomain()
+	}
+
+	return enterprises, total, nil
+}
+
+// AddUserToEnterprise добавляет пользователя к предприятию.
+func (r *EnterpriseRepository) AddUserToEnterprise(ctx context.Context, userID, enterpriseID string) error {
+	link := userEnterpriseModel{
+		UserID:       userID,
+		EnterpriseID: enterpriseID,
+	}
+	return r.executor.WithContext(ctx).Create(&link).Error
+}
+
+// RemoveUserFromEnterprise удаляет пользователя из предприятия.
+func (r *EnterpriseRepository) RemoveUserFromEnterprise(ctx context.Context, userID, enterpriseID string) error {
+	result := r.executor.WithContext(ctx).
+		Where("user_id = ? AND enterprise_id = ?", userID, enterpriseID).
+		Delete(&userEnterpriseModel{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return domain.ErrEnterpriseNotFound
+	}
+	return nil
+}
+
+// CheckUserEnterpriseAccess проверяет, имеет ли пользователь доступ к предприятию.
+func (r *EnterpriseRepository) CheckUserEnterpriseAccess(ctx context.Context, userID, enterpriseID string) (bool, error) {
+	var count int64
+	err := r.executor.WithContext(ctx).
+		Model(&userEnterpriseModel{}).
+		Where("user_id = ? AND enterprise_id = ?", userID, enterpriseID).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }

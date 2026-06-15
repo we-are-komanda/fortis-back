@@ -58,6 +58,8 @@ func (app *Application) registerCoreDependencies() {
 	processError(err)
 	err = app.container.Provide(func() config.Access { return cnf.Access })
 	processError(err)
+	err = app.container.Provide(func() config.Auth { return cnf.Auth })
+	processError(err)
 	err = app.container.Provide(func() config.Postgres { return cnf.Postgres })
 	processError(err)
 
@@ -90,12 +92,14 @@ func (app *Application) registerMiddleware(next fasthttp.RequestHandler) (handle
 			swagger *middleware.Swagger,
 			prometheus *middleware.Prometheus,
 			httpResponse *middleware.HttpResponse,
+			authRequired *middleware.AuthRequired,
 			access *middleware.Access,
 		) {
 			handler = cors.Process(handler)
 			handler = swagger.Process(handler)
 			handler = prometheus.Process(handler)
 			handler = httpResponse.Process(handler)
+			handler = authRequired.Process(handler)
 		})
 
 	if err != nil {

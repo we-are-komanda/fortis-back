@@ -64,6 +64,23 @@ func (m *mockRepo) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+func (m *mockRepo) FindAllByUserID(ctx context.Context, userID string, limit, offset int) ([]*domain.Enterprise, int64, error) {
+	// В моке возвращаем все предприятия (упрощение)
+	return m.FindAll(ctx, limit, offset)
+}
+
+func (m *mockRepo) CheckUserEnterpriseAccess(ctx context.Context, userID, enterpriseID string) (bool, error) {
+	return true, nil
+}
+
+func (m *mockRepo) AddUserToEnterprise(ctx context.Context, userID, enterpriseID string) error {
+	return nil
+}
+
+func (m *mockRepo) RemoveUserFromEnterprise(ctx context.Context, userID, enterpriseID string) error {
+	return nil
+}
+
 func TestCreate_Success(t *testing.T) {
 	repo := newMockRepo()
 	svc := NewEnterpriseService(repo)

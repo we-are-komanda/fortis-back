@@ -12,6 +12,7 @@ type Config struct {
 	Postgres    Postgres `envconfig:"db"`
 	Access      Access   `envconfig:"access"`
 	Cors        Cors     `yaml:"cors" envconfig:"cors"`
+	Auth        Auth     `yaml:"auth" envconfig:"auth"`
 	Environment string
 }
 
@@ -38,6 +39,11 @@ type Access struct {
 	ValidityEndpoint string   `yaml:"validity_endpoint"`
 	WhiteList        []string `yaml:"whitelist"`
 	ReTry            int      `yaml:"retry"`
+}
+
+type Auth struct {
+	JWTSecret string `yaml:"jwt_secret"`
+	JWTExpiry int    `yaml:"jwt_expiry"` // hours
 }
 
 type Cors struct {

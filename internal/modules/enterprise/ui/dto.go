@@ -102,3 +102,16 @@ type ListQuery struct {
 	// Example: 0
 	Offset int `json:"offset"`
 }
+
+// AddMemberRequest DTO запроса на добавление пользователя к предприятию.
+// swagger:parameters AddMemberRequest
+type AddMemberRequest struct {
+	// ID пользователя
+	// Required: true
+	// Example: 550e8400-e29b-41d4-a716-446655440000
+	UserID string `json:"userId"`
+	// ID предприятия
+	// Required: true
+	// Example: 550e8400-e29b-41d4-a716-446655440001
+	EnterpriseID string `json:"enterpriseId"`
+}

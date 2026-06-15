@@ -1,7 +1,9 @@
 package main
 
 import (
+	"github.com/fortis/backend/internal/config"
 	"github.com/fortis/backend/internal/db"
+	"github.com/fortis/backend/internal/middleware"
 	budgetApp "github.com/fortis/backend/internal/modules/budget/application"
 	budgetDomain "github.com/fortis/backend/internal/modules/budget/domain"
 	budgetInfra "github.com/fortis/backend/internal/modules/budget/infrastructure"
@@ -20,6 +22,9 @@ import (
 	platformUi "github.com/fortis/backend/internal/modules/platform/ui"
 	reportApp "github.com/fortis/backend/internal/modules/report/application"
 	reportUi "github.com/fortis/backend/internal/modules/report/ui"
+	userApp "github.com/fortis/backend/internal/modules/user/application"
+	userInfra "github.com/fortis/backend/internal/modules/user/infrastructure"
+	userUi "github.com/fortis/backend/internal/modules/user/ui"
 	"github.com/fortis/backend/internal/probe"
 	"github.com/fortis/backend/internal/rdbms"
 	"go.uber.org/dig"
@@ -102,5 +107,25 @@ func (app *Application) provideDependencies() {
 	processError(err)
 	err = app.container.Provide(reportApp.NewReportService,
 		dig.As(new(reportUi.ReportServiceInterface)))
+	processError(err)
+
+	// User module
+	err = app.container.Provide(userUi.NewUserController)
+	processError(err)
+	err = app.container.Provide(userInfra.NewUserRepository)
+	processError(err)
+	err = app.container.Provide(userApp.NewUserService,
+		dig.As(new(userUi.UserServiceInterface)))
+	processError(err)
+
+	// Auth middleware
+	err = app.container.Provide(func(cfg config.Auth) *middleware.AuthRequired {
+		return middleware.NewAuthRequired(cfg.JWTSecret, []string{
+			"^/_/[a-z]+$",
+			"^/api/v1/auth/register$",
+			"^/api/v1/auth/login$",
+			"^/api/v1/token_validate$",
+		})
+	})
 	processError(err)
 }

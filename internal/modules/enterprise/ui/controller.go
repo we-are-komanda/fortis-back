@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strconv"
 
 	"github.com/valyala/fasthttp"
@@ -17,8 +18,12 @@ type EnterpriseServiceInterface interface {
 	Create(ctx context.Context, name, address string, status domain.EnterpriseStatus, latitude, longitude float64) (*domain.Enterprise, error)
 	Get(ctx context.Context, id string) (*domain.Enterprise, error)
 	List(ctx context.Context, limit, offset int) ([]*domain.Enterprise, int64, error)
+	ListByUser(ctx context.Context, userID string, limit, offset int) ([]*domain.Enterprise, int64, error)
 	Update(ctx context.Context, id, name, address string, status domain.EnterpriseStatus, latitude, longitude float64) (*domain.Enterprise, error)
 	Delete(ctx context.Context, id string) error
+	CheckUserAccess(ctx context.Context, userID, enterpriseID string) error
+	AddUser(ctx context.Context, userID, enterpriseID string) error
+	RemoveUser(ctx context.Context, userID, enterpriseID string) error
 }
 
 // EnterpriseController — контроллер для управления предприятиями.
@@ -155,7 +160,17 @@ func (c *EnterpriseController) list(ctx *fasthttp.RequestCtx) {
 		}
 	}
 
-	enterprises, total, err := c.service.List(ctx, limit, offset)
+	var enterprises []*domain.Enterprise
+	var total int64
+	var err error
+
+	// Если пользователь аутентифицирован — фильтруем по userId
+	if userID := getUserIDFromCtx(ctx); userID != "" {
+		enterprises, total, err = c.service.ListByUser(ctx, userID, limit, offset)
+	} else {
+		enterprises, total, err = c.service.List(ctx, limit, offset)
+	}
+
 	if err != nil {
 		handlers.ErrorHandler(ctx, "internal_error", "failed to list enterprises", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
 		return
@@ -179,6 +194,16 @@ func (c *EnterpriseController) list(ctx *fasthttp.RequestCtx) {
 
 	ctx.SetBody(respJSON)
 }
+
+// getUserIDFromCtx извлекает userId из контекста запроса (устанавливается middleware AuthRequired).
+func getUserIDFromCtx(ctx *fasthttp.RequestCtx) string {
+	if userID, ok := ctx.UserValue("userID").(string); ok {
+		return userID
+	}
+	return ""
+}
+
+
 
 // swagger:route PUT /api/v1/enterprises api updateEnterprise
 // Обновление предприятия
@@ -270,6 +295,79 @@ func (c *EnterpriseController) Delete(ctx *fasthttp.RequestCtx) {
 			handlers.ErrorHandler(ctx, "not_found", "enterprise not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
 		default:
 			handlers.ErrorHandler(ctx, "internal_error", "failed to delete enterprise", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
+		}
+		return
+	}
+
+	ctx.SetBodyString(`{"status":"ok"}`)
+}
+
+// swagger:route POST /api/v1/enterprises/members api addEnterpriseMember
+// Добавление пользователя к предприятию
+//
+// Consumes:
+//   - application/json
+//
+// Produces:
+//   - application/json
+//
+// Responses:
+//
+//	200: description: Пользователь добавлен к предприятию
+//	400: description: Bad Request — неверные параметры
+//	403: description: Forbidden — доступ запрещён
+//	404: description: Not Found — предприятие не найдено
+//	500: description: Internal Server Error
+func (c *EnterpriseController) AddMember(ctx *fasthttp.RequestCtx) {
+	var req AddMemberRequest
+	if err := json.Unmarshal(ctx.PostBody(), &req); err != nil {
+		handlers.ErrorHandler(ctx, "parse_error", "invalid request body", &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
+		return
+	}
+
+	if req.UserID == "" || req.EnterpriseID == "" {
+		handlers.ErrorHandler(ctx, "validation_error", "userId and enterpriseId are required", &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
+		return
+	}
+
+	if err := c.service.AddUser(ctx, req.UserID, req.EnterpriseID); err != nil {
+		switch {
+		case errors.Is(err, domain.ErrEnterpriseNotFound):
+			handlers.ErrorHandler(ctx, "not_found", "enterprise not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
+		default:
+			handlers.ErrorHandler(ctx, "internal_error", "failed to add member", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
+		}
+		return
+	}
+
+	ctx.SetBodyString(`{"status":"ok"}`)
+}
+
+// swagger:route DELETE /api/v1/enterprises/members api removeEnterpriseMember
+// Удаление пользователя из предприятия
+//
+// Responses:
+//
+//	200: description: Пользователь удалён из предприятия
+//	400: description: Bad Request — не указаны параметры
+//	404: description: Not Found — предприятие или связь не найдены
+//	500: description: Internal Server Error
+func (c *EnterpriseController) RemoveMember(ctx *fasthttp.RequestCtx) {
+	userID := string(ctx.QueryArgs().Peek("userId"))
+	enterpriseID := string(ctx.QueryArgs().Peek("enterpriseId"))
+
+	if userID == "" || enterpriseID == "" {
+		handlers.ErrorHandler(ctx, "validation_error", "userId and enterpriseId query parameters are required", &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
+		return
+	}
+
+	if err := c.service.RemoveUser(ctx, userID, enterpriseID); err != nil {
+		switch {
+		case errors.Is(err, domain.ErrEnterpriseNotFound):
+			handlers.ErrorHandler(ctx, "not_found", "enterprise or membership not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
+		default:
+			slog.Error("failed to remove member", "error", err)
+			handlers.ErrorHandler(ctx, "internal_error", "failed to remove member", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
 		}
 		return
 	}

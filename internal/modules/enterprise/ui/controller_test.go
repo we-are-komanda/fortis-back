@@ -46,6 +46,22 @@ func (m *mockService) Delete(ctx context.Context, id string) error {
 	return m.deleteErr
 }
 
+func (m *mockService) ListByUser(ctx context.Context, userID string, limit, offset int) ([]*domain.Enterprise, int64, error) {
+	return m.listEnterprises, m.listTotal, m.listErr
+}
+
+func (m *mockService) CheckUserAccess(ctx context.Context, userID, enterpriseID string) error {
+	return nil
+}
+
+func (m *mockService) AddUser(ctx context.Context, userID, enterpriseID string) error {
+	return nil
+}
+
+func (m *mockService) RemoveUser(ctx context.Context, userID, enterpriseID string) error {
+	return nil
+}
+
 func validEnterprise() *domain.Enterprise {
 	now := time.Now().UTC()
 	e, _ := domain.NewEnterprise(
