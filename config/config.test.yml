@@ -11,6 +11,9 @@ access:
   validity_endpoint: ''
   whitelist:
     - '^/_/[a-z]+$'
+auth:
+  jwt_secret: 'test-jwt-secret'
+  jwt_expiry: 24
 cors:
   enable: true
   allow_credentials: true

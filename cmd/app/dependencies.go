@@ -23,6 +23,7 @@ import (
 	reportApp "github.com/fortis/backend/internal/modules/report/application"
 	reportUi "github.com/fortis/backend/internal/modules/report/ui"
 	userApp "github.com/fortis/backend/internal/modules/user/application"
+	userDomain "github.com/fortis/backend/internal/modules/user/domain"
 	userInfra "github.com/fortis/backend/internal/modules/user/infrastructure"
 	userUi "github.com/fortis/backend/internal/modules/user/ui"
 	"github.com/fortis/backend/internal/probe"
@@ -114,8 +115,9 @@ func (app *Application) provideDependencies() {
 	processError(err)
 	err = app.container.Provide(userInfra.NewUserRepository)
 	processError(err)
-	err = app.container.Provide(userApp.NewUserService,
-		dig.As(new(userUi.UserServiceInterface)))
+	err = app.container.Provide(func(repo userDomain.UserRepositoryInterface, authCfg config.Auth) *userApp.UserService {
+		return userApp.NewUserService(repo, authCfg.JWTSecret, authCfg.JWTExpiry)
+	}, dig.As(new(userUi.UserServiceInterface)))
 	processError(err)
 
 	// Auth middleware
