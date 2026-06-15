@@ -132,6 +132,27 @@ Skipping layers (e.g. Domain -> UI) is strictly forbidden. The Application layer
 - Config передавать по частям, не целиком. Конструктор принимает только нужный подконфиг: `config.Cors`, `config.Access`, `config.Postgres`.
 - В DI регистрировать подконфиги отдельно: `app.container.Provide(func() config.Cors { return cnf.Cors })`. Это упрощает тестирование — не нужно собирать весь `*config.Config`.
 
+### DI Gotchas
+
+- **dig НЕ умеет резолвить примитивные типы** (`string`, `int`, `bool` и т.д.). Если конструктор сервиса принимает примитивы (например, `jwtSecret string`, `jwtExpiry int`), НЕЛЬЗЯ передавать его напрямую в `app.container.Provide(Constructor, dig.As(...))`. Нужно обернуть в провайдер-функцию:
+
+  ```go
+  // НЕПРАВИЛЬНО — dig не найдёт string и int в контейнере:
+  app.container.Provide(NewUserService, dig.As(new(UserServiceInterface)))
+
+  // ПРАВИЛЬНО — провайдер распаковывает config.Auth и передаёт примитивы:
+  app.container.Provide(
+      func(repo domain.RepositoryInterface, cfg config.Auth) *UserService {
+          return NewUserService(repo, cfg.JWTSecret, cfg.JWTExpiry)
+      },
+      dig.As(new(UserServiceInterface)),
+  )
+  ```
+
+  Это относится к ЛЮБЫМ примитивным типам: если конструктору нужны скалярные значения — оберни вызов провайдер-функцией, либо измени конструктор принимать конфиг-структуру целиком.
+
+- **Ошибка-индикатор**: если при запуске падает `missing dependencies for function "..." : missing types: string; int` — значит какая-то регистрация передаёт dig-у конструктор с примитивными параметрами. Ищи её в `dependencies.go`.
+
 ## HTTP Status Codes
 
 Use appropriate HTTP status codes for different error types:
