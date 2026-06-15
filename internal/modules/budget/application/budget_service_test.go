@@ -378,6 +378,244 @@ func TestBudgetService_CheckBudget_Unlimited(t *testing.T) {
 	}
 }
 
+func TestBudgetService_CompareConfigs_Success(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	projectA := makeTestProject(t)
+	projectB := makeTestProjectWithDifferentData(t)
+
+	svc := NewBudgetService(
+		&mockBudgetRepo{configs: map[string]*budgetDomain.BudgetConfig{}},
+		&mockProjectRepo{
+			projects: map[string]*defenseDomain.DefenseProject{
+				"proj-1": projectA,
+				"proj-2": projectB,
+			},
+		},
+	)
+
+	comp, err := svc.CompareConfigs(ctx, "proj-1", "proj-2")
+	if err != nil {
+		t.Fatalf("CompareConfigs() unexpected error: %v", err)
+	}
+
+	// Check snapshots
+	if comp.ProjectA().ProjectID() != "proj-1" {
+		t.Errorf("ProjectA().ProjectID() = %s, want proj-1", comp.ProjectA().ProjectID())
+	}
+	if comp.ProjectB().ProjectID() != "proj-2" {
+		t.Errorf("ProjectB().ProjectID() = %s, want proj-2", comp.ProjectB().ProjectID())
+	}
+
+	// Check structural profiles exist
+	if comp.ProjectA().StructuralProfile().ObjectCount() == 0 && comp.ProjectB().StructuralProfile().ObjectCount() == 0 {
+		t.Error("both structural profiles are empty")
+	}
+
+	// Check diff exists
+	diff := comp.Diff()
+	if diff.ObjectCountDelta() == 0 && diff.UnitCountDelta() == 0 {
+		t.Log("diff is zero — projects may be identical in structure")
+	}
+
+	// Check cost calculation exists
+	if comp.ProjectA().CostCalculation().TotalMln() <= 0 {
+		t.Errorf("ProjectA cost should be > 0, got %f", comp.ProjectA().CostCalculation().TotalMln())
+	}
+	if comp.ProjectB().CostCalculation().TotalMln() <= 0 {
+		t.Errorf("ProjectB cost should be > 0, got %f", comp.ProjectB().CostCalculation().TotalMln())
+	}
+}
+
+func TestBudgetService_CompareConfigs_EmptyIDs(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	svc := NewBudgetService(&mockBudgetRepo{}, &mockProjectRepo{})
+
+	_, err := svc.CompareConfigs(ctx, "", "")
+	if !errors.Is(err, budgetDomain.ErrBothIDsRequired) {
+		t.Errorf("error = %v, want ErrBothIDsRequired", err)
+	}
+
+	_, err = svc.CompareConfigs(ctx, "proj-1", "")
+	if !errors.Is(err, budgetDomain.ErrBothIDsRequired) {
+		t.Errorf("error = %v, want ErrBothIDsRequired", err)
+	}
+
+	_, err = svc.CompareConfigs(ctx, "", "proj-2")
+	if !errors.Is(err, budgetDomain.ErrBothIDsRequired) {
+		t.Errorf("error = %v, want ErrBothIDsRequired", err)
+	}
+}
+
+func TestBudgetService_CompareConfigs_ProjectNotFound(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	projectA := makeTestProject(t)
+
+	svc := NewBudgetService(
+		&mockBudgetRepo{configs: map[string]*budgetDomain.BudgetConfig{}},
+		&mockProjectRepo{
+			projects: map[string]*defenseDomain.DefenseProject{
+				"proj-1": projectA,
+			},
+		},
+	)
+
+	_, err := svc.CompareConfigs(ctx, "proj-1", "nonexistent")
+	if err == nil {
+		t.Fatal("CompareConfigs() expected error, got nil")
+	}
+}
+
+func TestBudgetService_CompareConfigs_SameProject(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	project := makeTestProject(t)
+
+	svc := NewBudgetService(
+		&mockBudgetRepo{configs: map[string]*budgetDomain.BudgetConfig{}},
+		&mockProjectRepo{
+			projects: map[string]*defenseDomain.DefenseProject{
+				"proj-1": project,
+			},
+		},
+	)
+
+	comp, err := svc.CompareConfigs(ctx, "proj-1", "proj-1")
+	if err != nil {
+		t.Fatalf("CompareConfigs() unexpected error: %v", err)
+	}
+
+	// Comparing same project should produce zero diff
+	diff := comp.Diff()
+	if diff.ObjectCountDelta() != 0 {
+		t.Errorf("ObjectCountDelta() = %d, want 0", diff.ObjectCountDelta())
+	}
+	if diff.UnitCountDelta() != 0 {
+		t.Errorf("UnitCountDelta() = %d, want 0", diff.UnitCountDelta())
+	}
+	if diff.CostDeltaMln() != 0 {
+		t.Errorf("CostDeltaMln() = %f, want 0", diff.CostDeltaMln())
+	}
+}
+
+func TestBuildStructuralProfile(t *testing.T) {
+	t.Parallel()
+
+	project := makeTestProject(t)
+	calc := budgetDomain.NewCostCalculation(180, nil, nil, nil)
+	profile := buildStructuralProfile(project, &calc)
+
+	if profile.ObjectCount() <= 0 {
+		t.Errorf("ObjectCount() = %d, want > 0", profile.ObjectCount())
+	}
+	if profile.EchelonCount() <= 0 {
+		t.Errorf("EchelonCount() = %d, want > 0", profile.EchelonCount())
+	}
+	if profile.UnitCount() <= 0 {
+		t.Errorf("UnitCount() = %d, want > 0", profile.UnitCount())
+	}
+	if len(profile.ByEchelon()) == 0 {
+		t.Errorf("ByEchelon() length = %d, want > 0", len(profile.ByEchelon()))
+	}
+}
+
+func TestComputeDiff(t *testing.T) {
+	t.Parallel()
+
+	profileA := budgetDomain.NewStructuralProfile(5, 10, 2, 3, 1, 4, 100.0, nil)
+	profileB := budgetDomain.NewStructuralProfile(8, 16, 3, 4, 2, 6, 250.0, nil)
+	calcA := budgetDomain.NewCostCalculation(100, nil, nil, nil)
+	calcB := budgetDomain.NewCostCalculation(250, nil, nil, nil)
+
+	diff := computeDiff(profileA, profileB, calcA, calcB)
+
+	if diff.ObjectCountDelta() != 3 {
+		t.Errorf("ObjectCountDelta() = %d, want 3", diff.ObjectCountDelta())
+	}
+	if diff.UnitCountDelta() != 6 {
+		t.Errorf("UnitCountDelta() = %d, want 6", diff.UnitCountDelta())
+	}
+	if diff.EchelonCountDelta() != 1 {
+		t.Errorf("EchelonCountDelta() = %d, want 1", diff.EchelonCountDelta())
+	}
+	if diff.CostDeltaMln() != 150.0 {
+		t.Errorf("CostDeltaMln() = %f, want 150.0", diff.CostDeltaMln())
+	}
+}
+
+// makeTestProjectWithDifferentData создаёт проект с другими данными для сравнения.
+func makeTestProjectWithDifferentData(t *testing.T) *defenseDomain.DefenseProject {
+	t.Helper()
+
+	now := time.Now().UTC()
+	price1 := 20.0
+	price2 := 50.0
+	price3 := 100.0
+
+	nilString := func(s string) *string {
+		return &s
+	}
+
+	project, err := defenseDomain.NewDefenseProject(
+		"proj-2",
+		"Test Config B",
+		"ent-1",
+		"Test Project B",
+		defenseDomain.NewProtectedObject("obj-1", "Object Alpha",
+			defenseDomain.NewCoordinates(55.75, 37.62)),
+		[]defenseDomain.EditableDefenseLayer{
+			defenseDomain.NewEditableDefenseLayer(
+				"echelon-1", "Обнаружение", "detection", nil,
+				1, nil, nil,
+				defenseDomain.LayerGeometryCircle,
+				defenseDomain.NewCircleGeometry(defenseDomain.NewCoordinates(55.75, 37.62), 1000),
+				nil, nil, true, true, false,
+			),
+			defenseDomain.NewEditableDefenseLayer(
+				"echelon-2", "Подавление", "suppression", nil,
+				2, nil, nil,
+				defenseDomain.LayerGeometryCircle,
+				defenseDomain.NewCircleGeometry(defenseDomain.NewCoordinates(55.75, 37.62), 2000),
+				nil, nil, true, true, false,
+			),
+			defenseDomain.NewEditableDefenseLayer(
+				"echelon-3", "Поражение", "engagement", nil,
+				3, nil, nil,
+				defenseDomain.LayerGeometryCircle,
+				defenseDomain.NewCircleGeometry(defenseDomain.NewCoordinates(55.75, 37.62), 3000),
+				nil, nil, true, true, false,
+			),
+		},
+		[]defenseDomain.DefenseAsset{
+			makeTestAsset("asset-1", "Mobile Radar", "radar", &price1),
+			makeTestAsset("asset-2", "Jammer System", "jamming", &price2),
+			makeTestAsset("asset-3", "Intercept Missile", "kinetic", &price3),
+		},
+		[]defenseDomain.PlacedDefenseObject{
+			makeTestPlacedObject("placed-1", "asset-1", "echelon-1", 4, nil, now),
+			makeTestPlacedObject("placed-2", "asset-2", "echelon-2", 3, nil, now),
+			makeTestPlacedObject("placed-3", "asset-3", "echelon-3", 2, nil, now),
+		},
+		nil,
+		nil,
+		nil,
+		defenseDomain.DefenseProjectModeView,
+		defenseDomain.DefenseProjectSourceCustom,
+		nilString("preset-2"),
+		now,
+	)
+	if err != nil {
+		t.Fatalf("NewDefenseProject() unexpected error: %v", err)
+	}
+	return project
+}
+
 func TestBudgetService_CalculateCost_WithCustomPrice(t *testing.T) {
 	t.Parallel()
 

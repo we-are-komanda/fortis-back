@@ -154,6 +154,85 @@ type BudgetCheckRequest struct {
 	EchelonID string `json:"echelonId"`
 }
 
+// ---- Comparison DTOs ----
+
+// CompareQuery — query-параметры для сравнения конфигураций.
+// swagger:parameters CompareConfigs
+type CompareQuery struct {
+	// ID первого проекта
+	// Required: true
+	// In: query
+	ProjectID1 string `json:"id1"`
+	// ID второго проекта
+	// Required: true
+	// In: query
+	ProjectID2 string `json:"id2"`
+}
+
+// ConfigComparisonResponse — ответ сравнения двух конфигураций.
+// swagger:response ConfigComparisonResponse
+type ConfigComparisonResponse struct {
+	ProjectA ConfigSnapshotDTO `json:"projectA"`
+	ProjectB ConfigSnapshotDTO `json:"projectB"`
+	Diff     ConfigDiffDTO     `json:"diff"`
+}
+
+// ConfigSnapshotDTO — слепок одной конфигурации.
+type ConfigSnapshotDTO struct {
+	ProjectID         string               `json:"projectId"`
+	ProjectName       string               `json:"projectName"`
+	StructuralProfile StructuralProfileDTO `json:"structuralProfile"`
+	CostCalculation   CostCalculationDTO   `json:"costCalculation"`
+}
+
+// StructuralProfileDTO — структурный профиль конфигурации.
+type StructuralProfileDTO struct {
+	ObjectCount     int                `json:"objectCount"`
+	UnitCount       int                `json:"unitCount"`
+	EchelonCount    int                `json:"echelonCount"`
+	CategoryCount   int                `json:"categoryCount"`
+	ConflictCount   int                `json:"conflictCount"`
+	CoveredObjCount int                `json:"coveredObjCount"`
+	TotalMln        float64            `json:"totalMln"`
+	ByEchelon       []EchelonProfileDTO `json:"byEchelon"`
+}
+
+// EchelonProfileDTO — профиль одного эшелона.
+type EchelonProfileDTO struct {
+	LayerID        string `json:"layerId"`
+	LayerCode      string `json:"layerCode"`
+	LayerName      string `json:"layerName"`
+	ObjectCount    int    `json:"objectCount"`
+	UnitCount      int    `json:"unitCount"`
+	CategoryCount  int    `json:"categoryCount"`
+	ConflictCount  int    `json:"conflictCount"`
+	CoveredObjCount int   `json:"coveredObjCount"`
+}
+
+// ConfigDiffDTO — разница между двумя конфигурациями.
+type ConfigDiffDTO struct {
+	ObjectCountDelta     int            `json:"objectCountDelta"`
+	UnitCountDelta       int            `json:"unitCountDelta"`
+	EchelonCountDelta    int            `json:"echelonCountDelta"`
+	CategoryCountDelta   int            `json:"categoryCountDelta"`
+	ConflictCountDelta   int            `json:"conflictCountDelta"`
+	CoveredObjCountDelta int            `json:"coveredObjCountDelta"`
+	CostDeltaMln         float64        `json:"costDeltaMln"`
+	ByEchelon            []EchelonDiffDTO `json:"byEchelon"`
+}
+
+// EchelonDiffDTO — разница по одному эшелону.
+type EchelonDiffDTO struct {
+	LayerID           string `json:"layerId"`
+	LayerCode         string `json:"layerCode"`
+	LayerName         string `json:"layerName"`
+	ObjectCountDelta  int    `json:"objectCountDelta"`
+	UnitCountDelta    int    `json:"unitCountDelta"`
+	CategoryCountDelta int   `json:"categoryCountDelta"`
+	ConflictCountDelta int   `json:"conflictCountDelta"`
+	CoveredObjDelta   int    `json:"coveredObjDelta"`
+}
+
 // BudgetCheckResponse DTO результата проверки бюджета.
 // swagger:response BudgetCheckResponse
 type BudgetCheckResponse struct {

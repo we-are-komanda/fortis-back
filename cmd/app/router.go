@@ -48,6 +48,7 @@ func (app *Application) registerHandlers(r *router.Router) error {
 			r.PUT("/api/v1/projects/budget", budgetController.UpdateBudgetConfig)
 			r.GET("/api/v1/projects/cost", budgetController.CalculateCost)
 			r.POST("/api/v1/projects/budget/check", budgetController.CheckBudget)
+			r.GET("/api/v1/projects/compare", budgetController.Compare)
 		})
 
 	return err

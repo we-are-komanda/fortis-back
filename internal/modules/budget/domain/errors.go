@@ -17,4 +17,13 @@ var (
 
 	// ErrProjectIDRequired возвращается, если ID проекта не указан.
 	ErrProjectIDRequired = errors.New("project ID is required")
+
+	// ErrComparisonFailed возвращается при ошибке сравнения конфигураций.
+	ErrComparisonFailed = errors.New("comparison failed")
+
+	// ErrBothIDsRequired возвращается, если не указаны оба ID проекта для сравнения.
+	ErrBothIDsRequired = errors.New("both project ids are required for comparison")
+
+	// ErrInvalidEchelonProfile возвращается при некорректных данных профиля эшелона.
+	ErrInvalidEchelonProfile = errors.New("invalid echelon profile: layerID is required")
 )
