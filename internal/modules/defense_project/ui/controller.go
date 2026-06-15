@@ -19,7 +19,7 @@ type DefenseProjectServiceInterface interface {
 	CreateFromJSON(ctx context.Context, name, enterpriseID, rawJSON string) (*domain.DefenseProject, error)
 	ListProjects(ctx context.Context, enterpriseID string, limit, offset int) ([]*domain.DefenseProject, int64, error)
 	GetProject(ctx context.Context, id string) (*domain.DefenseProject, error)
-	UpdateProject(ctx context.Context, id, name, enterpriseID, projectJSON string) (*domain.DefenseProject, error)
+	UpdateProject(ctx context.Context, id, name, enterpriseID, projectJSON string, version *int) (*domain.DefenseProject, error)
 	DeleteProject(ctx context.Context, id string) error
 }
 
@@ -288,7 +288,7 @@ func (c *DefenseProjectController) Update(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	project, err := c.service.UpdateProject(ctx, projectID, req.Name, req.EnterpriseID, req.ProjectJSON)
+	project, err := c.service.UpdateProject(ctx, projectID, req.Name, req.EnterpriseID, req.ProjectJSON, req.Version)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrProjectNotFound):

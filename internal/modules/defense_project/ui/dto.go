@@ -130,6 +130,9 @@ type UpdateProjectRequest struct {
 	// JSON проекта защиты для перезаписи содержимого карты (опционально)
 	// In: body
 	ProjectJSON string `json:"projectJson,omitempty"`
+	// Ожидаемая версия проекта для раннего обнаружения конфликта (опционально)
+	// In: body
+	Version *int `json:"version,omitempty"`
 }
 
 // DeleteProjectQuery DTO query-параметров для удаления проекта.

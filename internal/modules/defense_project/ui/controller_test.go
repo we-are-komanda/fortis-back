@@ -44,7 +44,7 @@ func (m *mockService) GetProject(ctx context.Context, id string) (*domain.Defens
 	return m.projectByID, m.crudErr
 }
 
-func (m *mockService) UpdateProject(ctx context.Context, id, name, enterpriseID, projectJSON string) (*domain.DefenseProject, error) {
+func (m *mockService) UpdateProject(ctx context.Context, id, name, enterpriseID, projectJSON string, version *int) (*domain.DefenseProject, error) {
 	if m.crudErr != nil {
 		return nil, m.crudErr
 	}
@@ -451,6 +451,25 @@ func TestDefenseProjectController_Update_VersionConflict(t *testing.T) {
 	ctrl := NewDefenseProjectController(svc)
 
 	reqBody := `{"name":"Новое имя"}`
+	ctx := &fasthttp.RequestCtx{}
+	ctx.QueryArgs().Set("id", "550e8400-e29b-41d4-a716-446655440000")
+	ctx.Request.SetBody([]byte(reqBody))
+
+	ctrl.Update(ctx)
+
+	if ctx.Response.StatusCode() != fasthttp.StatusConflict {
+		t.Errorf("expected status 409, got %d", ctx.Response.StatusCode())
+	}
+}
+
+func TestDefenseProjectController_Update_ExplicitVersionConflict(t *testing.T) {
+	svc := &mockService{
+		crudErr: domain.ErrVersionConflict,
+	}
+	ctrl := NewDefenseProjectController(svc)
+
+	// Клиент явно передаёт ожидаемую версию
+	reqBody := `{"name":"Новое имя","version":1}`
 	ctx := &fasthttp.RequestCtx{}
 	ctx.QueryArgs().Set("id", "550e8400-e29b-41d4-a716-446655440000")
 	ctx.Request.SetBody([]byte(reqBody))

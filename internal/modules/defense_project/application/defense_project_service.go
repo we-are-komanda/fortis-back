@@ -306,13 +306,23 @@ func (s *DefenseProjectService) GetProject(ctx context.Context, id string) (*dom
 
 // UpdateProject обновляет существующий проект.
 //
+// Если version передан (не nil) и не совпадает с текущей версией проекта —
+// возвращает ErrVersionConflict до любой обработки данных.
+//
 // Если projectJSON непустой — содержимое карты полностью перезаписывается из
 // переданного JSON, при этом сохраняется ID проекта и версия optimistic-lock.
 // Если projectJSON пустой — обновляются только метаданные (имя, enterpriseID).
-func (s *DefenseProjectService) UpdateProject(ctx context.Context, id, name, enterpriseID, projectJSON string) (*domain.DefenseProject, error) {
+func (s *DefenseProjectService) UpdateProject(ctx context.Context, id, name, enterpriseID, projectJSON string, version *int) (*domain.DefenseProject, error) {
 	project, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+
+	// Ранняя проверка версии: если клиент явно указал ожидаемую версию,
+	// проверяем её до любых изменений. Это дополняет атомарную проверку
+	// в repo.Save() и даёт более информативную обратную связь.
+	if version != nil && *version != project.Version() {
+		return nil, domain.ErrVersionConflict
 	}
 
 	if projectJSON != "" {
