@@ -80,17 +80,17 @@ func TestUpdateProjectOverwritePreservesVersion(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if project.Version() != 3 {
-		t.Errorf("expected returned project version 3, got %d", project.Version())
+	if project.Version() != 4 {
+		t.Errorf("expected returned project version 4, got %d", project.Version())
 	}
-	// Версия должна сохраниться и в записанном через repo.Save объекте (overwrite
-	// не должен сбрасывать её на 1 или вызывать конфликт версий).
+	// Версия должна сохраниться и в записанном через repo.Save объекте как
+	// следующая optimistic-lock версия (overwrite не должен сбрасывать её на 1).
 	saved, ok := repo.projects["p1"]
 	if !ok {
 		t.Fatalf("saved project not found in repo")
 	}
-	if saved.Version() != 3 {
-		t.Errorf("expected saved project version 3, got %d", saved.Version())
+	if saved.Version() != 4 {
+		t.Errorf("expected saved project version 4, got %d", saved.Version())
 	}
 }
 
@@ -130,8 +130,8 @@ func TestUpdateProject_WithExplicitVersion_Success(t *testing.T) {
 	if project.Name() != "Renamed" {
 		t.Errorf("expected name 'Renamed', got %q", project.Name())
 	}
-	if project.Version() != 3 {
-		t.Errorf("expected version 3, got %d", project.Version())
+	if project.Version() != 4 {
+		t.Errorf("expected version 4, got %d", project.Version())
 	}
 }
 
@@ -168,8 +168,8 @@ func TestUpdateProject_WithoutVersion_StillWorks(t *testing.T) {
 	if project.Name() != "Renamed" {
 		t.Errorf("expected name 'Renamed', got %q", project.Name())
 	}
-	if project.Version() != 3 {
-		t.Errorf("expected version 3, got %d", project.Version())
+	if project.Version() != 4 {
+		t.Errorf("expected version 4, got %d", project.Version())
 	}
 }
 

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -23,6 +24,9 @@ func newMockRepo() *mockRepo {
 func (m *mockRepo) Save(ctx context.Context, project *domain.DefenseProject) error {
 	if m.err != nil {
 		return m.err
+	}
+	if _, exists := m.projects[project.ProjectID()]; exists {
+		project.SetVersion(project.Version() + 1)
 	}
 	m.projects[project.ProjectID()] = project
 	return nil
@@ -199,6 +203,16 @@ func TestDefenseProjectService_Export_Success(t *testing.T) {
 
 	if jsonStr == "" {
 		t.Fatal("expected non-empty JSON string")
+	}
+
+	var exported struct {
+		Version int `json:"version"`
+	}
+	if err := json.Unmarshal([]byte(jsonStr), &exported); err != nil {
+		t.Fatalf("failed to parse exported JSON: %v", err)
+	}
+	if exported.Version != project.Version() {
+		t.Errorf("expected exported version %d, got %d", project.Version(), exported.Version)
 	}
 }
 

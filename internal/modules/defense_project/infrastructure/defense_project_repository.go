@@ -42,7 +42,7 @@ func (r *DefenseProjectRepository) Save(ctx context.Context, project *domain.Def
 	result = db.Model(&DefenseProjectModel{}).Where("id = ? AND version = ?", model.ID, model.Version).
 		Updates(map[string]interface{}{
 			"name":          model.Name,
-			"enterprise_id": model.EnterpriseID,
+			"enterprise_id": nullableEnterpriseID(model.EnterpriseID),
 			"project_data":  model.ProjectData,
 			"version":       model.Version + 1,
 			"updated_at":    model.UpdatedAt,
@@ -53,7 +53,15 @@ func (r *DefenseProjectRepository) Save(ctx context.Context, project *domain.Def
 	if result.RowsAffected == 0 {
 		return domain.ErrVersionConflict
 	}
+	project.SetVersion(model.Version + 1)
 	return nil
+}
+
+func nullableEnterpriseID(enterpriseID string) interface{} {
+	if enterpriseID == "" {
+		return nil
+	}
+	return enterpriseID
 }
 
 func (r *DefenseProjectRepository) FindByID(ctx context.Context, id string) (*domain.DefenseProject, error) {
