@@ -52,7 +52,7 @@ func (r *DefenseAssetRepository) FindAll(ctx context.Context, filter domain.Defe
 	db := r.executor.WithContext(ctx)
 
 	// Базовый запрос
-	query := db.Model(&DefenseAssetModel{})
+	query := db.Model(&DefenseAssetModel{}).Where("is_public = TRUE OR enterprise_id IN (SELECT enterprise_id FROM user_enterprises WHERE user_id = ?)", filter.UserID)
 
 	// Фильтры
 	if filter.EnterpriseID != nil {
@@ -110,9 +110,9 @@ func (r *DefenseAssetRepository) Update(ctx context.Context, asset *domain.Defen
 	}
 
 	result := r.executor.WithContext(ctx).Model(&DefenseAssetModel{}).Where("id = ?", model.ID).Updates(map[string]interface{}{
-		"asset_data":  model.AssetData,
-		"is_public":   model.IsPublic,
-		"updated_at":  model.UpdatedAt,
+		"asset_data": model.AssetData,
+		"is_public":  model.IsPublic,
+		"updated_at": model.UpdatedAt,
 	})
 	if result.Error != nil {
 		return result.Error

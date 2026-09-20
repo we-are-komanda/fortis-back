@@ -14,13 +14,13 @@ import (
 
 // DefenseProjectServiceInterface — интерфейс сервиса для операций с проектами защиты.
 type DefenseProjectServiceInterface interface {
-	Import(ctx context.Context, rawJSON string) (*domain.DefenseProject, error)
-	Export(ctx context.Context, projectID string) (string, error)
-	CreateFromJSON(ctx context.Context, name, enterpriseID, rawJSON string) (*domain.DefenseProject, error)
-	ListProjects(ctx context.Context, enterpriseID string, limit, offset int) ([]*domain.DefenseProject, int64, error)
-	GetProject(ctx context.Context, id string) (*domain.DefenseProject, error)
-	UpdateProject(ctx context.Context, id, name, enterpriseID, projectJSON string, version *int) (*domain.DefenseProject, error)
-	DeleteProject(ctx context.Context, id string) error
+	Import(ctx context.Context, actorID string, rawJSON string) (*domain.DefenseProject, error)
+	Export(ctx context.Context, actorID string, projectID string) (string, error)
+	CreateFromJSON(ctx context.Context, actorID string, name, enterpriseID, rawJSON string) (*domain.DefenseProject, error)
+	ListProjects(ctx context.Context, actorID string, enterpriseID string, limit, offset int) ([]*domain.DefenseProject, int64, error)
+	GetProject(ctx context.Context, actorID string, id string) (*domain.DefenseProject, error)
+	UpdateProject(ctx context.Context, actorID string, id, name string, enterpriseID *string, projectJSON string, version *int) (*domain.DefenseProject, error)
+	DeleteProject(ctx context.Context, actorID string, id string) error
 }
 
 // DefenseProjectController — контроллер для импорта/экспорта проектов защиты.
@@ -60,12 +60,15 @@ func (c *DefenseProjectController) Import(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	project, err := c.service.Import(ctx, req.ProjectJSON)
+	project, err := c.service.Import(ctx, handlers.ActorID(ctx), req.ProjectJSON)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrInvalidSchemaVersion):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
-		case errors.Is(err, domain.ErrInvalidProjectData):
+		case errors.Is(err, domain.ErrInvalidProjectData), errors.Is(err, domain.ErrProjectOwnershipImmutable):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		case errors.Is(err, domain.ErrVersionConflict):
 			handlers.ErrorHandler(ctx, "version_conflict", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusConflict)
@@ -106,8 +109,11 @@ func (c *DefenseProjectController) Export(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	jsonStr, err := c.service.Export(ctx, projectID)
+	jsonStr, err := c.service.Export(ctx, handlers.ActorID(ctx), projectID)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrProjectNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "project not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
@@ -151,12 +157,15 @@ func (c *DefenseProjectController) Create(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	project, err := c.service.CreateFromJSON(ctx, req.Name, req.EnterpriseID, req.ProjectJSON)
+	project, err := c.service.CreateFromJSON(ctx, handlers.ActorID(ctx), req.Name, req.EnterpriseID, req.ProjectJSON)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrInvalidSchemaVersion):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
-		case errors.Is(err, domain.ErrInvalidProjectData):
+		case errors.Is(err, domain.ErrInvalidProjectData), errors.Is(err, domain.ErrProjectOwnershipImmutable):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		case errors.Is(err, domain.ErrInvalidConfigName):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
@@ -205,8 +214,11 @@ func (c *DefenseProjectController) List(ctx *fasthttp.RequestCtx) {
 	}
 	enterpriseID := string(ctx.QueryArgs().Peek("enterpriseId"))
 
-	projects, total, err := c.service.ListProjects(ctx, enterpriseID, limit, offset)
+	projects, total, err := c.service.ListProjects(ctx, handlers.ActorID(ctx), enterpriseID, limit, offset)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		handlers.ErrorHandler(ctx, "internal_error", "failed to list projects", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
 		return
 	}
@@ -240,8 +252,11 @@ func (c *DefenseProjectController) Get(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	project, err := c.service.GetProject(ctx, projectID)
+	project, err := c.service.GetProject(ctx, handlers.ActorID(ctx), projectID)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrProjectNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "project not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
@@ -288,14 +303,17 @@ func (c *DefenseProjectController) Update(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	project, err := c.service.UpdateProject(ctx, projectID, req.Name, req.EnterpriseID, req.ProjectJSON, req.Version)
+	project, err := c.service.UpdateProject(ctx, handlers.ActorID(ctx), projectID, req.Name, req.EnterpriseID, req.ProjectJSON, req.Version)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrProjectNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "project not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
 		case errors.Is(err, domain.ErrInvalidSchemaVersion):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
-		case errors.Is(err, domain.ErrInvalidProjectData):
+		case errors.Is(err, domain.ErrInvalidProjectData), errors.Is(err, domain.ErrProjectOwnershipImmutable):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		case errors.Is(err, domain.ErrVersionConflict):
 			handlers.ErrorHandler(ctx, "version_conflict", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusConflict)
@@ -334,7 +352,10 @@ func (c *DefenseProjectController) Delete(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	if err := c.service.DeleteProject(ctx, projectID); err != nil {
+	if err := c.service.DeleteProject(ctx, handlers.ActorID(ctx), projectID); err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrProjectNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "project not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
@@ -346,5 +367,3 @@ func (c *DefenseProjectController) Delete(ctx *fasthttp.RequestCtx) {
 
 	ctx.SetBodyString(`{"status":"ok"}`)
 }
-
-

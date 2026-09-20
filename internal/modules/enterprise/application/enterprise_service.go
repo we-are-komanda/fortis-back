@@ -2,13 +2,18 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"time"
 
-	"github.com/google/uuid"
+	"github.com/fortis/backend/internal/auth"
 
 	"github.com/fortis/backend/internal/modules/enterprise/domain"
 )
+
+// AccessChecker is shared by enterprise-owned application services.
+type AccessChecker interface {
+	CheckUserAccess(ctx context.Context, userID, enterpriseID string) error
+}
 
 // EnterpriseService — сервис для управления предприятиями.
 type EnterpriseService struct {
@@ -22,72 +27,35 @@ func NewEnterpriseService(repo domain.EnterpriseRepositoryInterface) *Enterprise
 	}
 }
 
-// Create создаёт новое предприятие.
-func (s *EnterpriseService) Create(
-	ctx context.Context,
-	name, address string,
-	status domain.EnterpriseStatus,
-	latitude, longitude float64,
-) (*domain.Enterprise, error) {
-	now := time.Now().UTC()
-	enterprise, err := domain.NewEnterprise(
-		uuid.New().String(),
-		name,
-		address,
-		status,
-		latitude,
-		longitude,
-		now,
-		now,
-	)
-	if err != nil {
+// Create is closed until a separate trusted provisioning path is approved.
+func (s *EnterpriseService) Create(ctx context.Context, userID, name, address string, status domain.EnterpriseStatus, latitude, longitude float64) (*domain.Enterprise, error) {
+	if err := auth.RequireIdentity(userID); err != nil {
 		return nil, err
 	}
-
-	if err := s.repo.Save(ctx, enterprise); err != nil {
-		return nil, fmt.Errorf("save enterprise: %w", err)
-	}
-
-	return enterprise, nil
+	// ponytail: enterprise provisioning is operator-only; add a separate trusted use case if self-service is approved.
+	return nil, auth.ErrForbidden
 }
 
 // Get возвращает предприятие по ID.
-func (s *EnterpriseService) Get(ctx context.Context, id string) (*domain.Enterprise, error) {
+func (s *EnterpriseService) Get(ctx context.Context, userID, id string) (*domain.Enterprise, error) {
+	if err := s.CheckUserAccess(ctx, userID, id); err != nil {
+		return nil, err
+	}
 	enterprise, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	return enterprise, nil
-}
-
-// List возвращает список предприятий с пагинацией.
-func (s *EnterpriseService) List(ctx context.Context, limit, offset int) ([]*domain.Enterprise, int64, error) {
-	if limit <= 0 {
-		limit = 20
-	}
-	if limit > 100 {
-		limit = 100
-	}
-	if offset < 0 {
-		offset = 0
-	}
-
-	enterprises, total, err := s.repo.FindAll(ctx, limit, offset)
-	if err != nil {
-		return nil, 0, fmt.Errorf("list enterprises: %w", err)
-	}
-
-	return enterprises, total, nil
 }
 
 // Update обновляет существующее предприятие.
 func (s *EnterpriseService) Update(
 	ctx context.Context,
-	id, name, address string,
+	userID, id, name, address string,
 	status domain.EnterpriseStatus,
 	latitude, longitude float64,
 ) (*domain.Enterprise, error) {
-	enterprise, err := s.repo.FindByID(ctx, id)
+	enterprise, err := s.Get(ctx, userID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -118,15 +86,18 @@ func (s *EnterpriseService) Update(
 }
 
 // Delete удаляет предприятие по ID.
-func (s *EnterpriseService) Delete(ctx context.Context, id string) error {
-	if err := s.repo.Delete(ctx, id); err != nil {
+func (s *EnterpriseService) Delete(ctx context.Context, userID, id string) error {
+	if err := s.CheckUserAccess(ctx, userID, id); err != nil {
 		return err
 	}
-	return nil
+	return auth.ErrForbidden
 }
 
 // ListByUser возвращает предприятия, доступные пользователю, с пагинацией.
 func (s *EnterpriseService) ListByUser(ctx context.Context, userID string, limit, offset int) ([]*domain.Enterprise, int64, error) {
+	if err := auth.RequireIdentity(userID); err != nil {
+		return nil, 0, err
+	}
 	if limit <= 0 {
 		limit = 20
 	}
@@ -146,14 +117,20 @@ func (s *EnterpriseService) ListByUser(ctx context.Context, userID string, limit
 }
 
 // CheckUserAccess проверяет, имеет ли пользователь доступ к предприятию.
-// Возвращает nil если доступ есть, или ErrEnterpriseAccessDenied.
+// Missing enterprises and absent membership share ErrNotFound; storage failures remain errors.
 func (s *EnterpriseService) CheckUserAccess(ctx context.Context, userID, enterpriseID string) error {
-	if userID == "" {
-		return domain.ErrEnterpriseAccessDenied
+	if err := auth.RequireIdentity(userID); err != nil {
+		return err
+	}
+	if enterpriseID == "" {
+		return auth.ErrNotFound
 	}
 
 	// Проверяем, что предприятие существует
 	if _, err := s.repo.FindByID(ctx, enterpriseID); err != nil {
+		if errors.Is(err, domain.ErrEnterpriseNotFound) {
+			return auth.ErrNotFound
+		}
 		return err
 	}
 
@@ -164,24 +141,24 @@ func (s *EnterpriseService) CheckUserAccess(ctx context.Context, userID, enterpr
 	}
 
 	if !hasAccess {
-		return domain.ErrEnterpriseAccessDenied
+		return auth.ErrNotFound
 	}
 
 	return nil
 }
 
-// AddUser добавляет пользователя к предприятию.
-func (s *EnterpriseService) AddUser(ctx context.Context, userID, enterpriseID string) error {
-	// Проверяем, что предприятие существует
-	_, err := s.repo.FindByID(ctx, enterpriseID)
-	if err != nil {
+// AddUser is operator-only; an ordinary authenticated actor cannot grant membership.
+func (s *EnterpriseService) AddUser(ctx context.Context, actorID, userID, enterpriseID string) error {
+	if err := auth.RequireIdentity(actorID); err != nil {
 		return err
 	}
-
-	return s.repo.AddUserToEnterprise(ctx, userID, enterpriseID)
+	return auth.ErrForbidden
 }
 
-// RemoveUser удаляет пользователя из предприятия.
-func (s *EnterpriseService) RemoveUser(ctx context.Context, userID, enterpriseID string) error {
-	return s.repo.RemoveUserFromEnterprise(ctx, userID, enterpriseID)
+// RemoveUser is closed to ordinary user sessions, like AddUser.
+func (s *EnterpriseService) RemoveUser(ctx context.Context, actorID, userID, enterpriseID string) error {
+	if err := auth.RequireIdentity(actorID); err != nil {
+		return err
+	}
+	return auth.ErrForbidden
 }

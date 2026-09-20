@@ -4,6 +4,7 @@ import "context"
 
 // DefenseAssetFilter — фильтр для списка средств защиты.
 type DefenseAssetFilter struct {
+	UserID       string
 	EnterpriseID *string
 	IsPublic     *bool
 	Category     *DefenseAssetCategory

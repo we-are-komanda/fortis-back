@@ -18,3 +18,6 @@ var (
 	// ErrVersionConflict возвращается при попытке сохранить устаревшую версию проекта.
 	ErrVersionConflict = errors.New("version conflict: project has been modified by another user")
 )
+
+// ErrProjectOwnershipImmutable prevents an ordinary update from transferring a project.
+var ErrProjectOwnershipImmutable = errors.New("project enterprise cannot be changed")

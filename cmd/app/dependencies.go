@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"github.com/fortis/backend/internal/config"
 	"github.com/fortis/backend/internal/db"
 	"github.com/fortis/backend/internal/middleware"
@@ -44,11 +45,18 @@ func (app *Application) provideDependencies() {
 	err = app.container.Provide(infrastructure.NewStatusRepository)
 	processError(err)
 
-	err = app.container.Provide(func() *probe.Controller {
+	err = app.container.Provide(func(database *db.DataBase) *probe.Controller {
+		databaseCheck := probe.NewDatabaseCheckService(func(ctx context.Context) error {
+			pool, err := database.GormORM.DB.DB()
+			if err != nil {
+				return err
+			}
+			return pool.PingContext(ctx)
+		})
 		return probe.NewProbeController(
 			*probe.NewCompositeCheckService(),
 			*probe.NewCompositeCheckService(),
-			*probe.NewCompositeCheckService(),
+			*probe.NewCompositeCheckService(databaseCheck),
 		)
 	})
 	processError(err)
@@ -56,8 +64,11 @@ func (app *Application) provideDependencies() {
 	// DefenseProject module
 	err = app.container.Provide(defenseUi.NewDefenseProjectController)
 	processError(err)
-	err = app.container.Provide(defenseApp.NewDefenseProjectService,
-		dig.As(new(defenseUi.DefenseProjectServiceInterface)))
+	err = app.container.Provide(defenseApp.NewDefenseProjectService)
+	processError(err)
+	err = app.container.Provide(func(service *defenseApp.DefenseProjectService) defenseUi.DefenseProjectServiceInterface {
+		return service
+	})
 	processError(err)
 	err = app.container.Provide(defenseInfra.NewDefenseProjectRepository)
 	processError(err)
@@ -69,17 +80,24 @@ func (app *Application) provideDependencies() {
 	// Enterprise module
 	err = app.container.Provide(enterpriseUi.NewEnterpriseController)
 	processError(err)
-	err = app.container.Provide(enterpriseApp.NewEnterpriseService,
-		dig.As(new(enterpriseUi.EnterpriseServiceInterface)))
+	err = app.container.Provide(enterpriseApp.NewEnterpriseService)
+	processError(err)
+	err = app.container.Provide(func(service *enterpriseApp.EnterpriseService) enterpriseUi.EnterpriseServiceInterface { return service })
 	processError(err)
 	err = app.container.Provide(enterpriseInfra.NewEnterpriseRepository)
+	processError(err)
+
+	err = app.container.Provide(func(service *enterpriseApp.EnterpriseService) enterpriseApp.AccessChecker { return service })
 	processError(err)
 
 	// DefenseAsset module
 	err = app.container.Provide(defenseAssetUi.NewDefenseAssetController)
 	processError(err)
-	err = app.container.Provide(defenseAssetApp.NewDefenseAssetService,
-		dig.As(new(defenseAssetUi.DefenseAssetServiceInterface)))
+	err = app.container.Provide(defenseAssetApp.NewDefenseAssetService)
+	processError(err)
+	err = app.container.Provide(func(service *defenseAssetApp.DefenseAssetService) defenseAssetUi.DefenseAssetServiceInterface {
+		return service
+	})
 	processError(err)
 	err = app.container.Provide(defenseAssetInfra.NewDefenseAssetRepository)
 	processError(err)
@@ -121,13 +139,13 @@ func (app *Application) provideDependencies() {
 	processError(err)
 
 	// Auth middleware
-	err = app.container.Provide(func(cfg config.Auth) *middleware.AuthRequired {
+	err = app.container.Provide(func(cfg config.Auth, users userUi.UserServiceInterface) *middleware.AuthRequired {
 		return middleware.NewAuthRequired(cfg.JWTSecret, []string{
 			"^/_/[a-z]+$",
 			"^/api/v1/auth/register$",
 			"^/api/v1/auth/login$",
 			"^/api/v1/token_validate$",
-		})
+		}, users)
 	})
 	processError(err)
 }

@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/fortis/backend/internal/auth"
+	defenseAssetApp "github.com/fortis/backend/internal/modules/defense_asset/application"
+	defenseApp "github.com/fortis/backend/internal/modules/defense_project/application"
 
 	budgetApp "github.com/fortis/backend/internal/modules/budget/application"
 	budgetDomain "github.com/fortis/backend/internal/modules/budget/domain"
@@ -14,37 +17,37 @@ import (
 
 // BudgetServiceInterface — интерфейс сервиса бюджета для отчёта.
 type BudgetServiceInterface interface {
-	CalculateCost(ctx context.Context, projectID string) (*budgetDomain.CostCalculation, error)
+	CalculateCost(ctx context.Context, userID, projectID string) (*budgetDomain.CostCalculation, error)
 }
 
 // ReportService — сервис для построения отчёта GIS MVP.
 type ReportService struct {
-	projectRepo      defenseDomain.DefenseProjectRepositoryInterface
-	budgetSvc        BudgetServiceInterface
-	defenseAssetRepo defenseAssetDomain.DefenseAssetRepositoryInterface
+	projects  *defenseApp.DefenseProjectService
+	budgetSvc BudgetServiceInterface
+	assets    *defenseAssetApp.DefenseAssetService
 }
 
 // NewReportService создаёт новый ReportService.
 func NewReportService(
-	projectRepo defenseDomain.DefenseProjectRepositoryInterface,
+	projects *defenseApp.DefenseProjectService,
 	budgetSvc BudgetServiceInterface,
-	defenseAssetRepo defenseAssetDomain.DefenseAssetRepositoryInterface,
+	assets *defenseAssetApp.DefenseAssetService,
 ) *ReportService {
 	return &ReportService{
-		projectRepo:      projectRepo,
-		budgetSvc:        budgetSvc,
-		defenseAssetRepo: defenseAssetRepo,
+		projects:  projects,
+		budgetSvc: budgetSvc,
+		assets:    assets,
 	}
 }
 
 // GetReport собирает полный отчёт для проекта.
-func (s *ReportService) GetReport(ctx context.Context, projectID string, hideCost bool) (*reportDomain.ReportPayload, error) {
+func (s *ReportService) GetReport(ctx context.Context, userID, projectID string, hideCost bool) (*reportDomain.ReportPayload, error) {
 	if projectID == "" {
 		return nil, reportDomain.ErrInvalidProjectID
 	}
 
 	// 1. Загрузить DefenseProject
-	project, err := s.projectRepo.FindByID(ctx, projectID)
+	project, err := s.projects.GetProject(ctx, userID, projectID)
 	if err != nil {
 		if errors.Is(err, defenseDomain.ErrProjectNotFound) {
 			return nil, reportDomain.ErrProjectNotFound
@@ -53,7 +56,7 @@ func (s *ReportService) GetReport(ctx context.Context, projectID string, hideCos
 	}
 
 	// 2. Вычислить CostCalculation
-	calc, err := s.budgetSvc.CalculateCost(ctx, projectID)
+	calc, err := s.budgetSvc.CalculateCost(ctx, userID, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("calculate cost: %w", err)
 	}
@@ -62,7 +65,10 @@ func (s *ReportService) GetReport(ctx context.Context, projectID string, hideCos
 	profile := budgetApp.BuildStructuralProfile(project, calc)
 
 	// 4. Преобразовать placedObjects → ReportPlacedObject[]
-	objects := s.buildObjectLines(ctx, project, calc)
+	objects, err := s.buildObjectLines(ctx, userID, project, calc)
+	if err != nil {
+		return nil, err
+	}
 
 	// 5. Преобразовать layers → ReportLayer[]
 	layers := buildReportLayers(project)
@@ -148,7 +154,7 @@ func buildReportBaseObject(project *defenseDomain.DefenseProject) reportDomain.R
 }
 
 // buildObjectLines строит строки размещённых объектов из placedObjects + assetLibrary.
-func (s *ReportService) buildObjectLines(ctx context.Context, project *defenseDomain.DefenseProject, calc *budgetDomain.CostCalculation) []reportDomain.ReportPlacedObject {
+func (s *ReportService) buildObjectLines(ctx context.Context, userID string, project *defenseDomain.DefenseProject, calc *budgetDomain.CostCalculation) ([]reportDomain.ReportPlacedObject, error) {
 	placedObjects := project.PlacedObjects()
 	projectAssets := project.AssetLibrary()
 	layers := project.Layers()
@@ -204,7 +210,10 @@ func (s *ReportService) buildObjectLines(ctx context.Context, project *defenseDo
 			// Загружаем полный ассет для weaponSpec
 			fullAsset, ok := fullAssetCache[obj.AssetID()]
 			if !ok {
-				fa, err := s.defenseAssetRepo.FindByID(ctx, obj.AssetID())
+				fa, err := s.assets.GetByID(ctx, userID, obj.AssetID())
+				if err != nil && !errors.Is(err, auth.ErrNotFound) {
+					return nil, err
+				}
 				if err == nil {
 					fullAsset = fa
 					fullAssetCache[obj.AssetID()] = fa
@@ -252,7 +261,7 @@ func (s *ReportService) buildObjectLines(ctx context.Context, project *defenseDo
 		result = append(result, rpo)
 	}
 
-	return result
+	return result, nil
 }
 
 // buildCompositionSummary строит сводку по составной установке.

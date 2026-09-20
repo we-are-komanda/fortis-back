@@ -2,7 +2,10 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/fortis/backend/internal/auth"
+	enterpriseApp "github.com/fortis/backend/internal/modules/enterprise/application"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,56 +15,70 @@ import (
 
 // DefenseAssetService — сервис для управления средствами защиты.
 type DefenseAssetService struct {
-	repo domain.DefenseAssetRepositoryInterface
+	repo   domain.DefenseAssetRepositoryInterface
+	access enterpriseApp.AccessChecker
 }
 
 // NewDefenseAssetService создаёт новый сервис средств защиты.
-func NewDefenseAssetService(repo domain.DefenseAssetRepositoryInterface) *DefenseAssetService {
+func NewDefenseAssetService(repo domain.DefenseAssetRepositoryInterface, access enterpriseApp.AccessChecker) *DefenseAssetService {
 	return &DefenseAssetService{
-		repo: repo,
+		repo: repo, access: access,
 	}
 }
 
 // CreateInput — входные данные для создания средства защиты.
 type CreateInput struct {
-	Name                  string
-	ShortName             string
-	Description           string
-	Category              domain.DefenseAssetCategory
-	Roles                 []domain.DefenseAssetRole
-	PricePerUnitMln       *float64
-	Currency              string
-	UnitLabel             string
-	CompatibleLayerTypes  []domain.LayerType
-	RecommendedLayerCodes []string
-	CompatibleLayerCodes  []string
+	Name                   string
+	ShortName              string
+	Description            string
+	Category               domain.DefenseAssetCategory
+	Roles                  []domain.DefenseAssetRole
+	PricePerUnitMln        *float64
+	Currency               string
+	UnitLabel              string
+	CompatibleLayerTypes   []domain.LayerType
+	RecommendedLayerCodes  []string
+	CompatibleLayerCodes   []string
 	IncompatibleLayerCodes []string
-	ProtectionType        string
-	MinEffectiveDistance  *float64
-	MaxEffectiveDistance  *float64
-	CoverageType          domain.DefenseAssetCoverageType
-	CoverageRadius        *float64
-	CoverageAngle         *float64
-	DeploymentType        domain.DeploymentType
-	PlacementType         domain.PlacementType
-	IconURL               string
-	ModelURL              string
-	Score                 *int
-	Priority              *domain.DefensePriority
-	CompoundProfile       *domain.DefenseAssetCompoundProfile
-	WeaponSpec            *domain.WeaponSpecification
-	DetectionSpec         *domain.DetectionSpecification
-	EWSpec                *domain.EWSpecification
-	Tags                  []string
-	LegacyItemID          string
-	CalculatorAssetID     *string
-	MapCatalogGroupIDs    []string
-	EnterpriseID          *string
-	IsPublic              bool
+	ProtectionType         string
+	MinEffectiveDistance   *float64
+	MaxEffectiveDistance   *float64
+	CoverageType           domain.DefenseAssetCoverageType
+	CoverageRadius         *float64
+	CoverageAngle          *float64
+	DeploymentType         domain.DeploymentType
+	PlacementType          domain.PlacementType
+	IconURL                string
+	ModelURL               string
+	Score                  *int
+	Priority               *domain.DefensePriority
+	CompoundProfile        *domain.DefenseAssetCompoundProfile
+	WeaponSpec             *domain.WeaponSpecification
+	DetectionSpec          *domain.DetectionSpecification
+	EWSpec                 *domain.EWSpecification
+	Tags                   []string
+	LegacyItemID           string
+	CalculatorAssetID      *string
+	MapCatalogGroupIDs     []string
+	EnterpriseID           *string
+	IsPublic               bool
 }
 
 // Create создаёт новое средство защиты.
-func (s *DefenseAssetService) Create(ctx context.Context, input CreateInput) (*domain.DefenseAsset, error) {
+func (s *DefenseAssetService) Create(ctx context.Context, userID string, input CreateInput) (*domain.DefenseAsset, error) {
+	if err := auth.RequireIdentity(userID); err != nil {
+		return nil, err
+	}
+	if input.IsPublic {
+		return nil, auth.ErrForbidden
+	}
+	enterpriseID := ""
+	if input.EnterpriseID != nil {
+		enterpriseID = *input.EnterpriseID
+	}
+	if err := s.access.CheckUserAccess(ctx, userID, enterpriseID); err != nil {
+		return nil, err
+	}
 	now := time.Now().UTC()
 	id := uuid.New().String()
 
@@ -116,18 +133,57 @@ func (s *DefenseAssetService) Create(ctx context.Context, input CreateInput) (*d
 }
 
 // GetByID возвращает средство защиты по ID.
-func (s *DefenseAssetService) GetByID(ctx context.Context, id string) (*domain.DefenseAsset, error) {
-	return s.repo.FindByID(ctx, id)
+func (s *DefenseAssetService) GetByID(ctx context.Context, userID, id string) (*domain.DefenseAsset, error) {
+	if err := auth.RequireIdentity(userID); err != nil {
+		return nil, err
+	}
+	asset, err := s.repo.FindByID(ctx, id)
+	if errors.Is(err, domain.ErrDefenseAssetNotFound) {
+		return nil, auth.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !asset.IsPublic() {
+		enterpriseID := ""
+		if asset.EnterpriseID() != nil {
+			enterpriseID = *asset.EnterpriseID()
+		}
+		if err := s.access.CheckUserAccess(ctx, userID, enterpriseID); err != nil {
+			return nil, err
+		}
+	}
+	return asset, nil
+}
+
+// GetForMutation applies the same parent policy to assets and their documents.
+func (s *DefenseAssetService) GetForMutation(ctx context.Context, userID, id string) (*domain.DefenseAsset, error) {
+	asset, err := s.GetByID(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	if asset.IsPublic() {
+		return nil, auth.ErrForbidden
+	}
+	return asset, nil
 }
 
 // List возвращает список средств защиты с пагинацией и фильтрацией.
 func (s *DefenseAssetService) List(
-	ctx context.Context,
+	ctx context.Context, userID string,
 	enterpriseID *string,
 	isPublic *bool,
 	category *domain.DefenseAssetCategory,
 	limit, offset int,
 ) ([]*domain.DefenseAsset, int64, error) {
+	if err := auth.RequireIdentity(userID); err != nil {
+		return nil, 0, err
+	}
+	if enterpriseID != nil {
+		if err := s.access.CheckUserAccess(ctx, userID, *enterpriseID); err != nil {
+			return nil, 0, err
+		}
+	}
 	if limit <= 0 {
 		limit = 20
 	}
@@ -139,6 +195,7 @@ func (s *DefenseAssetService) List(
 	}
 
 	filter := domain.DefenseAssetFilter{
+		UserID:       userID,
 		EnterpriseID: enterpriseID,
 		IsPublic:     isPublic,
 		Category:     category,
@@ -151,47 +208,51 @@ func (s *DefenseAssetService) List(
 
 // UpdateInput — входные данные для обновления средства защиты.
 type UpdateInput struct {
-	ID                    string
-	Name                  *string
-	ShortName             *string
-	Description           *string
-	Category              *domain.DefenseAssetCategory
-	Roles                 []domain.DefenseAssetRole
-	PricePerUnitMln       *float64
-	Currency              *string
-	UnitLabel             *string
-	CompatibleLayerTypes  []domain.LayerType
-	RecommendedLayerCodes []string
-	CompatibleLayerCodes  []string
+	ID                     string
+	Name                   *string
+	ShortName              *string
+	Description            *string
+	Category               *domain.DefenseAssetCategory
+	Roles                  []domain.DefenseAssetRole
+	PricePerUnitMln        *float64
+	Currency               *string
+	UnitLabel              *string
+	CompatibleLayerTypes   []domain.LayerType
+	RecommendedLayerCodes  []string
+	CompatibleLayerCodes   []string
 	IncompatibleLayerCodes []string
-	ProtectionType        *string
-	MinEffectiveDistance  *float64
-	MaxEffectiveDistance  *float64
-	CoverageType          *domain.DefenseAssetCoverageType
-	CoverageRadius        *float64
-	CoverageAngle         *float64
-	DeploymentType        *domain.DeploymentType
-	PlacementType         *domain.PlacementType
-	IconURL               *string
-	ModelURL              *string
-	Score                 *int
-	Priority              *domain.DefensePriority
-	CompoundProfile       *domain.DefenseAssetCompoundProfile
-	WeaponSpec            *domain.WeaponSpecification
-	DetectionSpec         *domain.DetectionSpecification
-	EWSpec                *domain.EWSpecification
-	Tags                  []string
-	LegacyItemID          *string
-	CalculatorAssetID     *string
-	MapCatalogGroupIDs    []string
-	IsPublic              *bool
+	ProtectionType         *string
+	MinEffectiveDistance   *float64
+	MaxEffectiveDistance   *float64
+	CoverageType           *domain.DefenseAssetCoverageType
+	CoverageRadius         *float64
+	CoverageAngle          *float64
+	DeploymentType         *domain.DeploymentType
+	PlacementType          *domain.PlacementType
+	IconURL                *string
+	ModelURL               *string
+	Score                  *int
+	Priority               *domain.DefensePriority
+	CompoundProfile        *domain.DefenseAssetCompoundProfile
+	WeaponSpec             *domain.WeaponSpecification
+	DetectionSpec          *domain.DetectionSpecification
+	EWSpec                 *domain.EWSpecification
+	Tags                   []string
+	LegacyItemID           *string
+	CalculatorAssetID      *string
+	MapCatalogGroupIDs     []string
+	IsPublic               *bool
 }
 
 // Update обновляет существующее средство защиты.
-func (s *DefenseAssetService) Update(ctx context.Context, input UpdateInput) (*domain.DefenseAsset, error) {
-	asset, err := s.repo.FindByID(ctx, input.ID)
+func (s *DefenseAssetService) Update(ctx context.Context, userID string, input UpdateInput) (*domain.DefenseAsset, error) {
+	asset, err := s.GetForMutation(ctx, userID, input.ID)
 	if err != nil {
 		return nil, err
+	}
+
+	if input.IsPublic != nil && *input.IsPublic {
+		return nil, auth.ErrForbidden
 	}
 
 	if input.Name != nil {
@@ -310,6 +371,9 @@ func (s *DefenseAssetService) Update(ctx context.Context, input UpdateInput) (*d
 }
 
 // Delete удаляет средство защиты по ID.
-func (s *DefenseAssetService) Delete(ctx context.Context, id string) error {
+func (s *DefenseAssetService) Delete(ctx context.Context, userID string, id string) error {
+	if _, err := s.GetForMutation(ctx, userID, id); err != nil {
+		return err
+	}
 	return s.repo.Delete(ctx, id)
 }

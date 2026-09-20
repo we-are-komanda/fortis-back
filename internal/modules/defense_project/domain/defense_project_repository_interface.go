@@ -16,6 +16,8 @@ type DefenseProjectRepositoryInterface interface {
 	// FindAllByEnterprise возвращает проекты по enterprise ID с пагинацией.
 	FindAllByEnterprise(ctx context.Context, enterpriseID string, limit, offset int) ([]*DefenseProject, int64, error)
 
+	FindAllByUserID(ctx context.Context, userID string, limit, offset int) ([]*DefenseProject, int64, error)
+
 	// Delete удаляет проект по ID.
 	Delete(ctx context.Context, id string) error
 }

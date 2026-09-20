@@ -139,3 +139,26 @@ func (r *DefenseProjectRepository) Delete(ctx context.Context, id string) error 
 	}
 	return nil
 }
+
+// FindAllByUserID scopes both rows and count before applying pagination.
+func (r *DefenseProjectRepository) FindAllByUserID(ctx context.Context, userID string, limit, offset int) ([]*domain.DefenseProject, int64, error) {
+	query := r.executor.WithContext(ctx).Model(&DefenseProjectModel{}).
+		Where("enterprise_id IN (SELECT enterprise_id FROM user_enterprises WHERE user_id = ?)", userID)
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var models []DefenseProjectModel
+	if err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&models).Error; err != nil {
+		return nil, 0, err
+	}
+	projects := make([]*domain.DefenseProject, 0, len(models))
+	for _, model := range models {
+		project, err := model.ToDomain()
+		if err != nil {
+			return nil, 0, err
+		}
+		projects = append(projects, project)
+	}
+	return projects, total, nil
+}

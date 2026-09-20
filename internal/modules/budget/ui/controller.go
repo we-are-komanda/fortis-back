@@ -13,11 +13,11 @@ import (
 
 // BudgetServiceInterface — интерфейс сервиса бюджета для контроллера.
 type BudgetServiceInterface interface {
-	GetBudgetConfig(ctx context.Context, projectID string) (*domain.BudgetConfig, error)
-	UpdateBudgetConfig(ctx context.Context, projectID string, mode domain.BudgetMode, amountMln float64) error
-	CalculateCost(ctx context.Context, projectID string) (*domain.CostCalculation, error)
-	CheckBudget(ctx context.Context, projectID string, input domain.BudgetCheckInput) (*domain.BudgetCheckResult, error)
-	CompareConfigs(ctx context.Context, projectID1, projectID2 string) (*domain.ConfigComparison, error)
+	GetBudgetConfig(ctx context.Context, actorID string, projectID string) (*domain.BudgetConfig, error)
+	UpdateBudgetConfig(ctx context.Context, actorID string, projectID string, mode domain.BudgetMode, amountMln float64) error
+	CalculateCost(ctx context.Context, actorID string, projectID string) (*domain.CostCalculation, error)
+	CheckBudget(ctx context.Context, actorID string, projectID string, input domain.BudgetCheckInput) (*domain.BudgetCheckResult, error)
+	CompareConfigs(ctx context.Context, actorID string, projectID1, projectID2 string) (*domain.ConfigComparison, error)
 }
 
 // BudgetController — контроллер для API бюджета и стоимости.
@@ -53,8 +53,11 @@ func (c *BudgetController) GetBudgetConfig(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	config, err := c.service.GetBudgetConfig(ctx, projectID)
+	config, err := c.service.GetBudgetConfig(ctx, handlers.ActorID(ctx), projectID)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrBudgetConfigNotFound):
 			handlers.ErrorHandler(ctx, "not_found", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusNotFound)
@@ -108,7 +111,10 @@ func (c *BudgetController) UpdateBudgetConfig(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	if err := c.service.UpdateBudgetConfig(ctx, projectID, domain.BudgetMode(req.BudgetMode), req.BudgetAmountMln); err != nil {
+	if err := c.service.UpdateBudgetConfig(ctx, handlers.ActorID(ctx), projectID, domain.BudgetMode(req.BudgetMode), req.BudgetAmountMln); err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrInvalidBudgetMode):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
@@ -121,8 +127,11 @@ func (c *BudgetController) UpdateBudgetConfig(ctx *fasthttp.RequestCtx) {
 	}
 
 	// Возвращаем обновлённую конфигурацию
-	config, err := c.service.GetBudgetConfig(ctx, projectID)
+	config, err := c.service.GetBudgetConfig(ctx, handlers.ActorID(ctx), projectID)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		handlers.ErrorHandler(ctx, "internal_error", "failed to get updated budget config", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
 		return
 	}
@@ -159,9 +168,12 @@ func (c *BudgetController) CalculateCost(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	calc, err := c.service.CalculateCost(ctx, projectID)
+	calc, err := c.service.CalculateCost(ctx, handlers.ActorID(ctx), projectID)
 	if err != nil {
-		handlers.ErrorHandler(ctx, "calculation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
+		handlers.ErrorHandler(ctx, "calculation_error", "failed to calculate cost", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
 		return
 	}
 
@@ -216,8 +228,11 @@ func (c *BudgetController) CheckBudget(ctx *fasthttp.RequestCtx) {
 	}
 
 	input := domain.NewBudgetCheckInput(req.AssetID, req.Quantity, req.EchelonID)
-	result, err := c.service.CheckBudget(ctx, projectID, input)
+	result, err := c.service.CheckBudget(ctx, handlers.ActorID(ctx), projectID, input)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrBudgetConfigNotFound):
 			handlers.ErrorHandler(ctx, "not_found", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusNotFound)
@@ -261,8 +276,11 @@ func (c *BudgetController) Compare(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	comp, err := c.service.CompareConfigs(ctx, projectID1, projectID2)
+	comp, err := c.service.CompareConfigs(ctx, handlers.ActorID(ctx), projectID1, projectID2)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrBothIDsRequired):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)

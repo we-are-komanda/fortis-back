@@ -14,7 +14,7 @@ import (
 
 // ReportServiceInterface — интерфейс сервиса отчёта для контроллера.
 type ReportServiceInterface interface {
-	GetReport(ctx context.Context, projectID string, hideCost bool) (*domain.ReportPayload, error)
+	GetReport(ctx context.Context, actorID string, projectID string, hideCost bool) (*domain.ReportPayload, error)
 }
 
 // ReportController — контроллер для API отчёта GIS MVP.
@@ -54,8 +54,11 @@ func (c *ReportController) Get(ctx *fasthttp.RequestCtx) {
 	hideCostStr := string(ctx.QueryArgs().Peek("hideCost"))
 	hideCost, _ := strconv.ParseBool(hideCostStr)
 
-	payload, err := c.service.GetReport(ctx, projectID, hideCost)
+	payload, err := c.service.GetReport(ctx, handlers.ActorID(ctx), projectID, hideCost)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrProjectNotFound):
 			handlers.ErrorHandler(ctx, "not_found", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusNotFound)

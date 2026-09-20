@@ -3,7 +3,10 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/fortis/backend/internal/auth"
+	enterpriseApp "github.com/fortis/backend/internal/modules/enterprise/application"
 	"time"
 
 	"github.com/google/uuid"
@@ -125,17 +128,21 @@ type importPlacedObject struct {
 
 // DefenseProjectService — сервис для операций импорта/экспорта DefenseProject.
 type DefenseProjectService struct {
-	repo domain.DefenseProjectRepositoryInterface
+	repo   domain.DefenseProjectRepositoryInterface
+	access enterpriseApp.AccessChecker
 }
 
-func NewDefenseProjectService(repo domain.DefenseProjectRepositoryInterface) *DefenseProjectService {
+func NewDefenseProjectService(repo domain.DefenseProjectRepositoryInterface, access enterpriseApp.AccessChecker) *DefenseProjectService {
 	return &DefenseProjectService{
-		repo: repo,
+		repo: repo, access: access,
 	}
 }
 
 // CreateFromJSON создаёт проект из JSON с заданным именем конфигурации и enterpriseID.
-func (s *DefenseProjectService) CreateFromJSON(ctx context.Context, name, enterpriseID, rawJSON string) (*domain.DefenseProject, error) {
+func (s *DefenseProjectService) CreateFromJSON(ctx context.Context, userID string, name, enterpriseID, rawJSON string) (*domain.DefenseProject, error) {
+	if err := s.access.CheckUserAccess(ctx, userID, enterpriseID); err != nil {
+		return nil, err
+	}
 	if name == "" {
 		return nil, domain.ErrInvalidConfigName
 	}
@@ -196,7 +203,10 @@ func (s *DefenseProjectService) CreateFromJSON(ctx context.Context, name, enterp
 }
 
 // Import выполняет импорт проекта из JSON.
-func (s *DefenseProjectService) Import(ctx context.Context, rawJSON string) (*domain.DefenseProject, error) {
+func (s *DefenseProjectService) Import(ctx context.Context, userID string, rawJSON string) (*domain.DefenseProject, error) {
+	if err := auth.RequireIdentity(userID); err != nil {
+		return nil, err
+	}
 	var payload importPayload
 	if err := json.Unmarshal([]byte(rawJSON), &payload); err != nil {
 		return nil, fmt.Errorf("unmarshal project json: %w", err)
@@ -205,6 +215,10 @@ func (s *DefenseProjectService) Import(ctx context.Context, rawJSON string) (*do
 	// Валидация schemaVersion
 	if payload.SchemaVersion != domain.SchemaVersion {
 		return nil, domain.ErrInvalidSchemaVersion
+	}
+
+	if err := s.access.CheckUserAccess(ctx, userID, payload.EnterpriseID); err != nil {
+		return nil, err
 	}
 
 	// Генерация нового UUID для проекта (игнорируем projectId из запроса)
@@ -265,7 +279,10 @@ func (s *DefenseProjectService) Import(ctx context.Context, rawJSON string) (*do
 }
 
 // CreateProject создаёт новый проект с заданным именем и enterpriseID.
-func (s *DefenseProjectService) CreateProject(ctx context.Context, name, enterpriseID, projectName string, baseObject domain.ProtectedObject, layers []domain.EditableDefenseLayer, assets []domain.DefenseAsset, placedObjects []domain.PlacedDefenseObject, mode domain.DefenseProjectMode, source domain.DefenseProjectSource, basePresetID *string) (*domain.DefenseProject, error) {
+func (s *DefenseProjectService) CreateProject(ctx context.Context, userID string, name, enterpriseID, projectName string, baseObject domain.ProtectedObject, layers []domain.EditableDefenseLayer, assets []domain.DefenseAsset, placedObjects []domain.PlacedDefenseObject, mode domain.DefenseProjectMode, source domain.DefenseProjectSource, basePresetID *string) (*domain.DefenseProject, error) {
+	if err := s.access.CheckUserAccess(ctx, userID, enterpriseID); err != nil {
+		return nil, err
+	}
 	if name == "" {
 		return nil, domain.ErrInvalidConfigName
 	}
@@ -292,16 +309,44 @@ func (s *DefenseProjectService) CreateProject(ctx context.Context, name, enterpr
 }
 
 // ListProjects возвращает список проектов с пагинацией.
-func (s *DefenseProjectService) ListProjects(ctx context.Context, enterpriseID string, limit, offset int) ([]*domain.DefenseProject, int64, error) {
+func (s *DefenseProjectService) ListProjects(ctx context.Context, userID, enterpriseID string, limit, offset int) ([]*domain.DefenseProject, int64, error) {
+	if err := auth.RequireIdentity(userID); err != nil {
+		return nil, 0, err
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	if enterpriseID != "" {
+		if err := s.access.CheckUserAccess(ctx, userID, enterpriseID); err != nil {
+			return nil, 0, err
+		}
 		return s.repo.FindAllByEnterprise(ctx, enterpriseID, limit, offset)
 	}
-	return s.repo.FindAll(ctx, limit, offset)
+	return s.repo.FindAllByUserID(ctx, userID, limit, offset)
 }
 
 // GetProject возвращает проект по ID.
-func (s *DefenseProjectService) GetProject(ctx context.Context, id string) (*domain.DefenseProject, error) {
-	return s.repo.FindByID(ctx, id)
+func (s *DefenseProjectService) GetProject(ctx context.Context, userID, id string) (*domain.DefenseProject, error) {
+	if err := auth.RequireIdentity(userID); err != nil {
+		return nil, err
+	}
+	project, err := s.repo.FindByID(ctx, id)
+	if errors.Is(err, domain.ErrProjectNotFound) {
+		return nil, auth.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := s.access.CheckUserAccess(ctx, userID, project.EnterpriseID()); err != nil {
+		return nil, err
+	}
+	return project, nil
 }
 
 // UpdateProject обновляет существующий проект.
@@ -312,12 +357,26 @@ func (s *DefenseProjectService) GetProject(ctx context.Context, id string) (*dom
 // Если projectJSON непустой — содержимое карты полностью перезаписывается из
 // переданного JSON, при этом сохраняется ID проекта и версия optimistic-lock.
 // Если projectJSON пустой — обновляются только метаданные (имя, enterpriseID).
-func (s *DefenseProjectService) UpdateProject(ctx context.Context, id, name, enterpriseID, projectJSON string, version *int) (*domain.DefenseProject, error) {
-	project, err := s.repo.FindByID(ctx, id)
+func (s *DefenseProjectService) UpdateProject(ctx context.Context, userID string, id, name string, enterpriseID *string, projectJSON string, version *int) (*domain.DefenseProject, error) {
+	project, err := s.GetProject(ctx, userID, id)
 	if err != nil {
 		return nil, err
 	}
 
+	if enterpriseID != nil && *enterpriseID != project.EnterpriseID() {
+		return nil, domain.ErrProjectOwnershipImmutable
+	}
+	if projectJSON != "" {
+		var ownership struct {
+			EnterpriseID *string `json:"enterpriseId"`
+		}
+		if err := json.Unmarshal([]byte(projectJSON), &ownership); err != nil {
+			return nil, domain.ErrInvalidProjectData
+		}
+		if ownership.EnterpriseID != nil && *ownership.EnterpriseID != project.EnterpriseID() {
+			return nil, domain.ErrProjectOwnershipImmutable
+		}
+	}
 	// Ранняя проверка версии: если клиент явно указал ожидаемую версию,
 	// проверяем её до любых изменений. Это дополняет атомарную проверку
 	// в repo.Save() и даёт более информативную обратную связь.
@@ -326,14 +385,11 @@ func (s *DefenseProjectService) UpdateProject(ctx context.Context, id, name, ent
 	}
 
 	if projectJSON != "" {
-		return s.overwriteProjectContent(ctx, project, name, enterpriseID, projectJSON)
+		return s.overwriteProjectContent(ctx, project, name, projectJSON)
 	}
 
 	if name != "" {
 		project.SetName(name)
-	}
-	if enterpriseID != "" {
-		project.SetEnterpriseID(enterpriseID)
 	}
 
 	if err := s.repo.Save(ctx, project); err != nil {
@@ -345,7 +401,7 @@ func (s *DefenseProjectService) UpdateProject(ctx context.Context, id, name, ent
 
 // overwriteProjectContent перестраивает доменный объект из projectJSON, переиспользуя
 // существующий ID проекта и сохраняя версию optimistic-lock.
-func (s *DefenseProjectService) overwriteProjectContent(ctx context.Context, existing *domain.DefenseProject, name, enterpriseID, projectJSON string) (*domain.DefenseProject, error) {
+func (s *DefenseProjectService) overwriteProjectContent(ctx context.Context, existing *domain.DefenseProject, name, projectJSON string) (*domain.DefenseProject, error) {
 	var payload importPayload
 	if err := json.Unmarshal([]byte(projectJSON), &payload); err != nil {
 		return nil, fmt.Errorf("unmarshal project json: %w", err)
@@ -381,14 +437,7 @@ func (s *DefenseProjectService) overwriteProjectContent(ctx context.Context, exi
 		finalName = name
 	}
 
-	// Итоговый enterpriseID: тот же порядок предпочтения.
 	finalEnterpriseID := existing.EnterpriseID()
-	if payload.EnterpriseID != "" {
-		finalEnterpriseID = payload.EnterpriseID
-	}
-	if enterpriseID != "" {
-		finalEnterpriseID = enterpriseID
-	}
 
 	now := time.Now().UTC()
 
@@ -425,13 +474,16 @@ func (s *DefenseProjectService) overwriteProjectContent(ctx context.Context, exi
 }
 
 // DeleteProject удаляет проект по ID.
-func (s *DefenseProjectService) DeleteProject(ctx context.Context, id string) error {
+func (s *DefenseProjectService) DeleteProject(ctx context.Context, userID string, id string) error {
+	if _, err := s.GetProject(ctx, userID, id); err != nil {
+		return err
+	}
 	return s.repo.Delete(ctx, id)
 }
 
 // Export выполняет экспорт проекта в JSON.
-func (s *DefenseProjectService) Export(ctx context.Context, projectID string) (string, error) {
-	project, err := s.repo.FindByID(ctx, projectID)
+func (s *DefenseProjectService) Export(ctx context.Context, userID string, projectID string) (string, error) {
+	project, err := s.GetProject(ctx, userID, projectID)
 	if err != nil {
 		return "", err
 	}

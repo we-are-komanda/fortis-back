@@ -21,23 +21,23 @@ type mockDefenseAssetService struct {
 	deleteFn  func(ctx context.Context, id string) error
 }
 
-func (m *mockDefenseAssetService) Create(ctx context.Context, input application.CreateInput) (*domain.DefenseAsset, error) {
+func (m *mockDefenseAssetService) Create(ctx context.Context, actorID string, input application.CreateInput) (*domain.DefenseAsset, error) {
 	return m.createFn(ctx, input)
 }
 
-func (m *mockDefenseAssetService) GetByID(ctx context.Context, id string) (*domain.DefenseAsset, error) {
+func (m *mockDefenseAssetService) GetByID(ctx context.Context, actorID string, id string) (*domain.DefenseAsset, error) {
 	return m.getByIDFn(ctx, id)
 }
 
-func (m *mockDefenseAssetService) List(ctx context.Context, enterpriseID *string, isPublic *bool, category *domain.DefenseAssetCategory, limit, offset int) ([]*domain.DefenseAsset, int64, error) {
+func (m *mockDefenseAssetService) List(ctx context.Context, actorID string, enterpriseID *string, isPublic *bool, category *domain.DefenseAssetCategory, limit, offset int) ([]*domain.DefenseAsset, int64, error) {
 	return m.listFn(ctx, enterpriseID, isPublic, category, limit, offset)
 }
 
-func (m *mockDefenseAssetService) Update(ctx context.Context, input application.UpdateInput) (*domain.DefenseAsset, error) {
+func (m *mockDefenseAssetService) Update(ctx context.Context, actorID string, input application.UpdateInput) (*domain.DefenseAsset, error) {
 	return m.updateFn(ctx, input)
 }
 
-func (m *mockDefenseAssetService) Delete(ctx context.Context, id string) error {
+func (m *mockDefenseAssetService) Delete(ctx context.Context, actorID string, id string) error {
 	return m.deleteFn(ctx, id)
 }
 

@@ -126,7 +126,7 @@ type UpdateProjectRequest struct {
 	Name string `json:"name"`
 	// Новый enterprise ID
 	// In: body
-	EnterpriseID string `json:"enterpriseId"`
+	EnterpriseID *string `json:"enterpriseId"`
 	// JSON проекта защиты для перезаписи содержимого карты (опционально)
 	// In: body
 	ProjectJSON string `json:"projectJson,omitempty"`

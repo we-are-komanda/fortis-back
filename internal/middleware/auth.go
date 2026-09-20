@@ -1,24 +1,33 @@
 package middleware
 
 import (
+	"context"
+	"errors"
 	"regexp"
 
 	"github.com/valyala/fasthttp"
 
 	"github.com/fortis/backend/internal/auth"
+	userDomain "github.com/fortis/backend/internal/modules/user/domain"
 )
+
+type profileReader interface {
+	GetProfile(ctx context.Context, userID string) (*userDomain.User, error)
+}
 
 // AuthRequired — middleware для проверки JWT-аутентификации.
 type AuthRequired struct {
 	jwtSecret string
 	whitelist []string
+	users     profileReader
 }
 
 // NewAuthRequired создаёт новый middleware аутентификации.
-func NewAuthRequired(jwtSecret string, whitelist []string) *AuthRequired {
+func NewAuthRequired(jwtSecret string, whitelist []string, users profileReader) *AuthRequired {
 	return &AuthRequired{
 		jwtSecret: jwtSecret,
 		whitelist: whitelist,
+		users:     users,
 	}
 }
 
@@ -49,9 +58,21 @@ func (m *AuthRequired) Process(next fasthttp.RequestHandler) fasthttp.RequestHan
 		}
 
 		claims, err := auth.ValidateToken(tokenString, m.jwtSecret)
-		if err != nil {
+		if err != nil || claims.UserID == "" {
 			c.SetStatusCode(fasthttp.StatusUnauthorized)
 			c.SetBodyString(`{"status":"error","errors":"invalid token"}`)
+			return
+		}
+
+		_, err = m.users.GetProfile(c, claims.UserID)
+		if errors.Is(err, userDomain.ErrUserNotFound) {
+			c.SetStatusCode(fasthttp.StatusUnauthorized)
+			c.SetBodyString(`{"status":"error","errors":"invalid identity"}`)
+			return
+		}
+		if err != nil {
+			c.SetStatusCode(fasthttp.StatusInternalServerError)
+			c.SetBodyString(`{"status":"error","errors":"identity unavailable"}`)
 			return
 		}
 

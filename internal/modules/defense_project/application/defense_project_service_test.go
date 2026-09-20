@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/fortis/backend/internal/auth"
 	"testing"
 
 	"github.com/fortis/backend/internal/modules/defense_project/domain"
@@ -71,7 +72,7 @@ func (m *mockRepo) Delete(ctx context.Context, id string) error {
 
 func validProjectJSON() string {
 	return `{
-		"schemaVersion": 1,
+		"schemaVersion": 1, "enterpriseId": "ent-1",
 		"projectId": "current",
 		"projectName": "Тестовый проект",
 		"baseObject": {
@@ -90,9 +91,9 @@ func validProjectJSON() string {
 
 func TestDefenseProjectService_Import_Success(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
-	project, err := service.Import(context.Background(), validProjectJSON())
+	project, err := service.Import(context.Background(), "actor", validProjectJSON())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -133,7 +134,7 @@ func TestDefenseProjectService_Import_Success(t *testing.T) {
 
 func TestDefenseProjectService_Import_InvalidSchemaVersion(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
 	jsonStr := `{
 		"schemaVersion": 999,
@@ -147,7 +148,7 @@ func TestDefenseProjectService_Import_InvalidSchemaVersion(t *testing.T) {
 		"updatedAt": "2026-06-12T14:00:00.000Z"
 	}`
 
-	_, err := service.Import(context.Background(), jsonStr)
+	_, err := service.Import(context.Background(), "actor", jsonStr)
 	if !errors.Is(err, domain.ErrInvalidSchemaVersion) {
 		t.Errorf("expected ErrInvalidSchemaVersion, got %v", err)
 	}
@@ -155,9 +156,9 @@ func TestDefenseProjectService_Import_InvalidSchemaVersion(t *testing.T) {
 
 func TestDefenseProjectService_Import_InvalidJSON(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
-	_, err := service.Import(context.Background(), "not json at all")
+	_, err := service.Import(context.Background(), "actor", "not json at all")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -165,10 +166,10 @@ func TestDefenseProjectService_Import_InvalidJSON(t *testing.T) {
 
 func TestDefenseProjectService_Import_EmptyProjectName(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
 	jsonStr := `{
-		"schemaVersion": 1,
+		"schemaVersion": 1, "enterpriseId": "ent-1",
 		"projectId": "test",
 		"projectName": "",
 		"baseObject": { "id": "o1", "name": "Obj", "center": { "lat": 0, "lng": 0 } },
@@ -179,7 +180,7 @@ func TestDefenseProjectService_Import_EmptyProjectName(t *testing.T) {
 		"updatedAt": "2026-06-12T14:00:00.000Z"
 	}`
 
-	_, err := service.Import(context.Background(), jsonStr)
+	_, err := service.Import(context.Background(), "actor", jsonStr)
 	if !errors.Is(err, domain.ErrInvalidProjectData) {
 		t.Errorf("expected ErrInvalidProjectData, got %v", err)
 	}
@@ -187,16 +188,16 @@ func TestDefenseProjectService_Import_EmptyProjectName(t *testing.T) {
 
 func TestDefenseProjectService_Export_Success(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
 	// Сначала импортируем проект
-	project, err := service.Import(context.Background(), validProjectJSON())
+	project, err := service.Import(context.Background(), "actor", validProjectJSON())
 	if err != nil {
 		t.Fatalf("import failed: %v", err)
 	}
 
 	// Экспортируем
-	jsonStr, err := service.Export(context.Background(), project.ProjectID())
+	jsonStr, err := service.Export(context.Background(), "actor", project.ProjectID())
 	if err != nil {
 		t.Fatalf("export failed: %v", err)
 	}
@@ -218,20 +219,20 @@ func TestDefenseProjectService_Export_Success(t *testing.T) {
 
 func TestDefenseProjectService_Export_NotFound(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
-	_, err := service.Export(context.Background(), "nonexistent-id")
-	if !errors.Is(err, domain.ErrProjectNotFound) {
+	_, err := service.Export(context.Background(), "actor", "nonexistent-id")
+	if !errors.Is(err, auth.ErrNotFound) {
 		t.Errorf("expected ErrProjectNotFound, got %v", err)
 	}
 }
 
 func TestDefenseProjectService_Import_WithLayers(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
 	jsonStr := `{
-		"schemaVersion": 1,
+		"schemaVersion": 1, "enterpriseId": "ent-1",
 		"projectId": "test",
 		"projectName": "Слоистый проект",
 		"baseObject": {
@@ -276,7 +277,7 @@ func TestDefenseProjectService_Import_WithLayers(t *testing.T) {
 		"updatedAt": "2026-06-12T14:00:00.000Z"
 	}`
 
-	project, err := service.Import(context.Background(), jsonStr)
+	project, err := service.Import(context.Background(), "actor", jsonStr)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -308,10 +309,10 @@ func TestDefenseProjectService_Import_WithLayers(t *testing.T) {
 
 func TestDefenseProjectService_Import_WithAssets(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
 	jsonStr := `{
-		"schemaVersion": 1,
+		"schemaVersion": 1, "enterpriseId": "ent-1",
 		"projectId": "test",
 		"projectName": "Проект с ассетами",
 		"baseObject": {
@@ -340,7 +341,7 @@ func TestDefenseProjectService_Import_WithAssets(t *testing.T) {
 		"updatedAt": "2026-06-12T14:00:00.000Z"
 	}`
 
-	project, err := service.Import(context.Background(), jsonStr)
+	project, err := service.Import(context.Background(), "actor", jsonStr)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -363,10 +364,10 @@ func TestDefenseProjectService_Import_WithAssets(t *testing.T) {
 
 func TestDefenseProjectService_Import_WithPlacedObjects(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
 	jsonStr := `{
-		"schemaVersion": 1,
+		"schemaVersion": 1, "enterpriseId": "ent-1",
 		"projectId": "test",
 		"projectName": "Проект с размещениями",
 		"baseObject": {
@@ -395,7 +396,7 @@ func TestDefenseProjectService_Import_WithPlacedObjects(t *testing.T) {
 		"updatedAt": "2026-06-12T14:00:00.000Z"
 	}`
 
-	project, err := service.Import(context.Background(), jsonStr)
+	project, err := service.Import(context.Background(), "actor", jsonStr)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -418,22 +419,22 @@ func TestDefenseProjectService_Import_WithPlacedObjects(t *testing.T) {
 
 func TestDefenseProjectService_Export_RoundTrip(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
 	// Импортируем
-	project, err := service.Import(context.Background(), validProjectJSON())
+	project, err := service.Import(context.Background(), "actor", validProjectJSON())
 	if err != nil {
 		t.Fatalf("import failed: %v", err)
 	}
 
 	// Экспортируем
-	exportedJSON, err := service.Export(context.Background(), project.ProjectID())
+	exportedJSON, err := service.Export(context.Background(), "actor", project.ProjectID())
 	if err != nil {
 		t.Fatalf("export failed: %v", err)
 	}
 
 	// Импортируем экспортированное (round-trip)
-	reimported, err := service.Import(context.Background(), exportedJSON)
+	reimported, err := service.Import(context.Background(), "actor", exportedJSON)
 	if err != nil {
 		t.Fatalf("reimport failed: %v", err)
 	}
@@ -442,4 +443,20 @@ func TestDefenseProjectService_Export_RoundTrip(t *testing.T) {
 		t.Errorf("round-trip: expected project name %q, got %q",
 			project.ProjectName(), reimported.ProjectName())
 	}
+}
+
+// Business fixtures grant only their explicit test tenant. HTTP isolation tests use real membership checks.
+type testAccess struct{}
+
+func (testAccess) CheckUserAccess(_ context.Context, actorID, enterpriseID string) error {
+	if actorID != "actor" {
+		return auth.ErrIdentityRequired
+	}
+	if enterpriseID != "ent-1" {
+		return auth.ErrNotFound
+	}
+	return nil
+}
+func (m *mockRepo) FindAllByUserID(ctx context.Context, userID string, limit, offset int) ([]*domain.DefenseProject, int64, error) {
+	return m.FindAllByEnterprise(ctx, "ent-1", limit, offset)
 }

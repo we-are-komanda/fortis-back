@@ -15,15 +15,14 @@ import (
 
 // EnterpriseServiceInterface — интерфейс сервиса для управления предприятиями.
 type EnterpriseServiceInterface interface {
-	Create(ctx context.Context, name, address string, status domain.EnterpriseStatus, latitude, longitude float64) (*domain.Enterprise, error)
-	Get(ctx context.Context, id string) (*domain.Enterprise, error)
-	List(ctx context.Context, limit, offset int) ([]*domain.Enterprise, int64, error)
+	Create(ctx context.Context, actorID string, name, address string, status domain.EnterpriseStatus, latitude, longitude float64) (*domain.Enterprise, error)
+	Get(ctx context.Context, actorID string, id string) (*domain.Enterprise, error)
 	ListByUser(ctx context.Context, userID string, limit, offset int) ([]*domain.Enterprise, int64, error)
-	Update(ctx context.Context, id, name, address string, status domain.EnterpriseStatus, latitude, longitude float64) (*domain.Enterprise, error)
-	Delete(ctx context.Context, id string) error
+	Update(ctx context.Context, actorID string, id, name, address string, status domain.EnterpriseStatus, latitude, longitude float64) (*domain.Enterprise, error)
+	Delete(ctx context.Context, actorID string, id string) error
 	CheckUserAccess(ctx context.Context, userID, enterpriseID string) error
-	AddUser(ctx context.Context, userID, enterpriseID string) error
-	RemoveUser(ctx context.Context, userID, enterpriseID string) error
+	AddUser(ctx context.Context, actorID string, userID, enterpriseID string) error
+	RemoveUser(ctx context.Context, actorID string, userID, enterpriseID string) error
 }
 
 // EnterpriseController — контроллер для управления предприятиями.
@@ -66,8 +65,7 @@ func (c *EnterpriseController) Create(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	enterprise, err := c.service.Create(
-		ctx,
+	enterprise, err := c.service.Create(ctx, handlers.ActorID(ctx),
 		req.Name,
 		req.Address,
 		domain.EnterpriseStatus(req.Status),
@@ -75,6 +73,9 @@ func (c *EnterpriseController) Create(ctx *fasthttp.RequestCtx) {
 		req.Longitude,
 	)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrInvalidEnterpriseName):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
@@ -124,8 +125,11 @@ func (c *EnterpriseController) GetOrList(ctx *fasthttp.RequestCtx) {
 }
 
 func (c *EnterpriseController) getByID(ctx *fasthttp.RequestCtx, id string) {
-	enterprise, err := c.service.Get(ctx, id)
+	enterprise, err := c.service.Get(ctx, handlers.ActorID(ctx), id)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrEnterpriseNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "enterprise not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
@@ -164,14 +168,12 @@ func (c *EnterpriseController) list(ctx *fasthttp.RequestCtx) {
 	var total int64
 	var err error
 
-	// Если пользователь аутентифицирован — фильтруем по userId
-	if userID := getUserIDFromCtx(ctx); userID != "" {
-		enterprises, total, err = c.service.ListByUser(ctx, userID, limit, offset)
-	} else {
-		enterprises, total, err = c.service.List(ctx, limit, offset)
-	}
+	enterprises, total, err = c.service.ListByUser(ctx, handlers.ActorID(ctx), limit, offset)
 
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		handlers.ErrorHandler(ctx, "internal_error", "failed to list enterprises", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
 		return
 	}
@@ -188,6 +190,9 @@ func (c *EnterpriseController) list(ctx *fasthttp.RequestCtx) {
 
 	respJSON, err := json.Marshal(resp)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		handlers.ErrorHandler(ctx, "internal_error", "failed to marshal response", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
 		return
 	}
@@ -202,8 +207,6 @@ func getUserIDFromCtx(ctx *fasthttp.RequestCtx) string {
 	}
 	return ""
 }
-
-
 
 // swagger:route PUT /api/v1/enterprises api updateEnterprise
 // Обновление предприятия
@@ -235,8 +238,7 @@ func (c *EnterpriseController) Update(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	enterprise, err := c.service.Update(
-		ctx,
+	enterprise, err := c.service.Update(ctx, handlers.ActorID(ctx),
 		id,
 		req.Name,
 		req.Address,
@@ -245,6 +247,9 @@ func (c *EnterpriseController) Update(ctx *fasthttp.RequestCtx) {
 		req.Longitude,
 	)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrEnterpriseNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "enterprise not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
@@ -288,8 +293,11 @@ func (c *EnterpriseController) Delete(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	err := c.service.Delete(ctx, id)
+	err := c.service.Delete(ctx, handlers.ActorID(ctx), id)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrEnterpriseNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "enterprise not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
@@ -330,7 +338,10 @@ func (c *EnterpriseController) AddMember(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	if err := c.service.AddUser(ctx, req.UserID, req.EnterpriseID); err != nil {
+	if err := c.service.AddUser(ctx, handlers.ActorID(ctx), req.UserID, req.EnterpriseID); err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrEnterpriseNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "enterprise not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
@@ -361,7 +372,10 @@ func (c *EnterpriseController) RemoveMember(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	if err := c.service.RemoveUser(ctx, userID, enterpriseID); err != nil {
+	if err := c.service.RemoveUser(ctx, handlers.ActorID(ctx), userID, enterpriseID); err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrEnterpriseNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "enterprise or membership not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)

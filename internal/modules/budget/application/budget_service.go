@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	defenseApp "github.com/fortis/backend/internal/modules/defense_project/application"
 	"math"
 
 	budgetDomain "github.com/fortis/backend/internal/modules/budget/domain"
@@ -12,29 +13,35 @@ import (
 
 // BudgetService — сервис для управления бюджетом и расчёта стоимости.
 type BudgetService struct {
-	budgetRepo  budgetDomain.BudgetConfigRepositoryInterface
-	projectRepo defenseDomain.DefenseProjectRepositoryInterface
+	budgetRepo budgetDomain.BudgetConfigRepositoryInterface
+	projects   *defenseApp.DefenseProjectService
 }
 
 // NewBudgetService создаёт новый BudgetService.
 func NewBudgetService(
 	budgetRepo budgetDomain.BudgetConfigRepositoryInterface,
-	projectRepo defenseDomain.DefenseProjectRepositoryInterface,
+	projects *defenseApp.DefenseProjectService,
 ) *BudgetService {
 	return &BudgetService{
-		budgetRepo:  budgetRepo,
-		projectRepo: projectRepo,
+		budgetRepo: budgetRepo,
+		projects:   projects,
 	}
 }
 
 // GetBudgetConfig возвращает конфигурацию бюджета проекта.
-func (s *BudgetService) GetBudgetConfig(ctx context.Context, projectID string) (*budgetDomain.BudgetConfig, error) {
+func (s *BudgetService) GetBudgetConfig(ctx context.Context, userID string, projectID string) (*budgetDomain.BudgetConfig, error) {
+	if _, err := s.projects.GetProject(ctx, userID, projectID); err != nil {
+		return nil, err
+	}
 	return s.budgetRepo.FindByProjectID(ctx, projectID)
 }
 
 // UpdateBudgetConfig обновляет конфигурацию бюджета проекта.
-func (s *BudgetService) UpdateBudgetConfig(ctx context.Context, projectID string, mode budgetDomain.BudgetMode, amountMln float64) error {
-	existing, err := s.budgetRepo.FindByProjectID(ctx, projectID)
+func (s *BudgetService) UpdateBudgetConfig(ctx context.Context, userID string, projectID string, mode budgetDomain.BudgetMode, amountMln float64) error {
+	if _, err := s.projects.GetProject(ctx, userID, projectID); err != nil {
+		return err
+	}
+	existing, err := s.GetBudgetConfig(ctx, userID, projectID)
 	if err != nil {
 		if errors.Is(err, budgetDomain.ErrBudgetConfigNotFound) {
 			config, createErr := budgetDomain.NewBudgetConfig(projectID, mode, amountMln)
@@ -53,8 +60,8 @@ func (s *BudgetService) UpdateBudgetConfig(ctx context.Context, projectID string
 }
 
 // CalculateCost выполняет полный расчёт стоимости конфигурации проекта.
-func (s *BudgetService) CalculateCost(ctx context.Context, projectID string) (*budgetDomain.CostCalculation, error) {
-	project, err := s.projectRepo.FindByID(ctx, projectID)
+func (s *BudgetService) CalculateCost(ctx context.Context, userID string, projectID string) (*budgetDomain.CostCalculation, error) {
+	project, err := s.projects.GetProject(ctx, userID, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("load project: %w", err)
 	}
@@ -134,8 +141,8 @@ func (s *BudgetService) CalculateCost(ctx context.Context, projectID string) (*b
 }
 
 // CheckBudget проверяет, помещается ли добавление средства в остаток бюджета.
-func (s *BudgetService) CheckBudget(ctx context.Context, projectID string, input budgetDomain.BudgetCheckInput) (*budgetDomain.BudgetCheckResult, error) {
-	config, err := s.budgetRepo.FindByProjectID(ctx, projectID)
+func (s *BudgetService) CheckBudget(ctx context.Context, userID string, projectID string, input budgetDomain.BudgetCheckInput) (*budgetDomain.BudgetCheckResult, error) {
+	config, err := s.GetBudgetConfig(ctx, userID, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +153,7 @@ func (s *BudgetService) CheckBudget(ctx context.Context, projectID string, input
 	}
 
 	// Текущая стоимость конфигурации
-	calc, err := s.CalculateCost(ctx, projectID)
+	calc, err := s.CalculateCost(ctx, userID, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("calculate cost: %w", err)
 	}
@@ -157,7 +164,7 @@ func (s *BudgetService) CheckBudget(ctx context.Context, projectID string, input
 	}
 
 	// Стоимость добавляемого средства
-	requiredMln, err := s.calculateAdditionCost(ctx, projectID, input)
+	requiredMln, err := s.calculateAdditionCost(ctx, userID, projectID, input)
 	if err != nil {
 		return nil, fmt.Errorf("calculate addition cost: %w", err)
 	}
@@ -179,8 +186,8 @@ func (s *BudgetService) resolveUnitPrice(obj defenseDomain.PlacedDefenseObject, 
 }
 
 // calculateAdditionCost вычисляет стоимость добавления средства в бюджет.
-func (s *BudgetService) calculateAdditionCost(ctx context.Context, projectID string, input budgetDomain.BudgetCheckInput) (float64, error) {
-	project, err := s.projectRepo.FindByID(ctx, projectID)
+func (s *BudgetService) calculateAdditionCost(ctx context.Context, userID string, projectID string, input budgetDomain.BudgetCheckInput) (float64, error) {
+	project, err := s.projects.GetProject(ctx, userID, projectID)
 	if err != nil {
 		return 0, fmt.Errorf("load project: %w", err)
 	}
@@ -264,27 +271,27 @@ func round2(v float64) float64 {
 }
 
 // CompareConfigs сравнивает две конфигурации проектов.
-func (s *BudgetService) CompareConfigs(ctx context.Context, projectID1, projectID2 string) (*budgetDomain.ConfigComparison, error) {
+func (s *BudgetService) CompareConfigs(ctx context.Context, userID string, projectID1, projectID2 string) (*budgetDomain.ConfigComparison, error) {
 	if projectID1 == "" || projectID2 == "" {
 		return nil, budgetDomain.ErrBothIDsRequired
 	}
 
-	projectA, err := s.projectRepo.FindByID(ctx, projectID1)
+	projectA, err := s.projects.GetProject(ctx, userID, projectID1)
 	if err != nil {
 		return nil, fmt.Errorf("load project A: %w", err)
 	}
 
-	projectB, err := s.projectRepo.FindByID(ctx, projectID2)
+	projectB, err := s.projects.GetProject(ctx, userID, projectID2)
 	if err != nil {
 		return nil, fmt.Errorf("load project B: %w", err)
 	}
 
-	calcA, err := s.CalculateCost(ctx, projectID1)
+	calcA, err := s.CalculateCost(ctx, userID, projectID1)
 	if err != nil {
 		return nil, fmt.Errorf("calculate cost for A: %w", err)
 	}
 
-	calcB, err := s.CalculateCost(ctx, projectID2)
+	calcB, err := s.CalculateCost(ctx, userID, projectID2)
 	if err != nil {
 		return nil, fmt.Errorf("calculate cost for B: %w", err)
 	}
@@ -320,12 +327,12 @@ func BuildStructuralProfile(project *defenseDomain.DefenseProject, calc *budgetD
 
 	// Считаем метрики по слоям
 	type echelonStats struct {
-		layerID      string
-		objectCount  int
-		unitCount    int
-		categories   map[string]struct{}
+		layerID       string
+		objectCount   int
+		unitCount     int
+		categories    map[string]struct{}
 		conflictCount int
-		coveredCount int
+		coveredCount  int
 	}
 
 	echelonStatsMap := make(map[string]*echelonStats)

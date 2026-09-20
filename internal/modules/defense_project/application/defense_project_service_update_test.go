@@ -15,7 +15,7 @@ import (
 func newExistingProject(t *testing.T, name string, placed []domain.PlacedDefenseObject) *domain.DefenseProject {
 	t.Helper()
 	project, err := domain.NewDefenseProject(
-		"p1", name, "", "Existing Project",
+		"p1", name, "ent-1", "Existing Project",
 		domain.NewProtectedObject("obj-0", "Obj0", domain.NewCoordinates(55.0, 37.0)),
 		nil, nil, placed,
 		nil, nil, nil,
@@ -30,20 +30,20 @@ func newExistingProject(t *testing.T, name string, placed []domain.PlacedDefense
 
 func TestUpdateProjectOverwritesContentWhenProjectJSONProvided(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
 	existing := newExistingProject(t, "Original", nil)
 	repo.projects["p1"] = existing
 
 	projectJSON := `{
-		"schemaVersion": 1, "projectId": "ignored", "projectName": "Site Alpha",
+		"schemaVersion": 1, "enterpriseId": "ent-1", "projectId": "ignored", "projectName": "Site Alpha",
 		"baseObject": {"id":"o1","name":"Obj","center":{"lat":55.75,"lng":37.61}},
 		"layers": [], "assetLibrary": [],
 		"placedObjects": [{"id":"pl1","assetId":"a1","layerId":"l1","coordinates":{"lat":55.76,"lng":37.62},"quantity":1,"status":"planned"}],
 		"mode": "view", "updatedAt": "2026-06-12T14:00:00.000Z"
 	}`
 
-	project, err := service.UpdateProject(context.Background(), "p1", "Renamed", "", projectJSON, nil)
+	project, err := service.UpdateProject(context.Background(), "actor", "p1", "Renamed", nil, projectJSON, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestUpdateProjectOverwritesContentWhenProjectJSONProvided(t *testing.T) {
 
 func TestUpdateProjectOverwritePreservesVersion(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
 	existing := newExistingProject(t, "Original", nil)
 	// Симулируем уже несколько раз сохранённый проект (optimistic-lock версия != 1).
@@ -69,13 +69,13 @@ func TestUpdateProjectOverwritePreservesVersion(t *testing.T) {
 	repo.projects["p1"] = existing
 
 	projectJSON := `{
-		"schemaVersion": 1, "projectId": "ignored", "projectName": "Site Alpha",
+		"schemaVersion": 1, "enterpriseId": "ent-1", "projectId": "ignored", "projectName": "Site Alpha",
 		"baseObject": {"id":"o1","name":"Obj","center":{"lat":55.75,"lng":37.61}},
 		"layers": [], "assetLibrary": [], "placedObjects": [],
 		"mode": "view", "updatedAt": "2026-06-12T14:00:00.000Z"
 	}`
 
-	project, err := service.UpdateProject(context.Background(), "p1", "", "", projectJSON, nil)
+	project, err := service.UpdateProject(context.Background(), "actor", "p1", "", nil, projectJSON, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestUpdateProjectOverwritePreservesVersion(t *testing.T) {
 
 func TestUpdateProjectOverwriteInvalidSchemaVersion(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
 	existing := newExistingProject(t, "Original", nil)
 	repo.projects["p1"] = existing
@@ -107,7 +107,7 @@ func TestUpdateProjectOverwriteInvalidSchemaVersion(t *testing.T) {
 		"layers": [], "assetLibrary": [], "placedObjects": []
 	}`
 
-	_, err := service.UpdateProject(context.Background(), "p1", "", "", projectJSON, nil)
+	_, err := service.UpdateProject(context.Background(), "actor", "p1", "", nil, projectJSON, nil)
 	if !errors.Is(err, domain.ErrInvalidSchemaVersion) {
 		t.Errorf("expected ErrInvalidSchemaVersion, got %v", err)
 	}
@@ -115,14 +115,14 @@ func TestUpdateProjectOverwriteInvalidSchemaVersion(t *testing.T) {
 
 func TestUpdateProject_WithExplicitVersion_Success(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
 	existing := newExistingProject(t, "Original", nil)
 	existing.SetVersion(3)
 	repo.projects["p1"] = existing
 
 	version := 3
-	project, err := service.UpdateProject(context.Background(), "p1", "Renamed", "", "", &version)
+	project, err := service.UpdateProject(context.Background(), "actor", "p1", "Renamed", nil, "", &version)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestUpdateProject_WithExplicitVersion_Success(t *testing.T) {
 
 func TestUpdateProject_WithExplicitVersion_Conflict(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
 	existing := newExistingProject(t, "Original", nil)
 	existing.SetVersion(3)
@@ -145,7 +145,7 @@ func TestUpdateProject_WithExplicitVersion_Conflict(t *testing.T) {
 
 	// Клиент указывает неверную версию (ожидал 999, а актуальна 3)
 	version := 999
-	_, err := service.UpdateProject(context.Background(), "p1", "Renamed", "", "", &version)
+	_, err := service.UpdateProject(context.Background(), "actor", "p1", "Renamed", nil, "", &version)
 	if !errors.Is(err, domain.ErrVersionConflict) {
 		t.Errorf("expected ErrVersionConflict, got %v", err)
 	}
@@ -153,14 +153,14 @@ func TestUpdateProject_WithExplicitVersion_Conflict(t *testing.T) {
 
 func TestUpdateProject_WithoutVersion_StillWorks(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
 	existing := newExistingProject(t, "Original", nil)
 	existing.SetVersion(3)
 	repo.projects["p1"] = existing
 
 	// Не передаём version (nil) — должно работать как раньше
-	project, err := service.UpdateProject(context.Background(), "p1", "Renamed", "", "", nil)
+	project, err := service.UpdateProject(context.Background(), "actor", "p1", "Renamed", nil, "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -175,13 +175,13 @@ func TestUpdateProject_WithoutVersion_StillWorks(t *testing.T) {
 
 func TestUpdateProject_InvalidProjectJson_ReturnsError(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
 	existing := newExistingProject(t, "Original", nil)
 	repo.projects["p1"] = existing
 
 	// Существующий тест на некорректный projectJSON не сломан
-	_, err := service.UpdateProject(context.Background(), "p1", "", "", "not json", nil)
+	_, err := service.UpdateProject(context.Background(), "actor", "p1", "", nil, "not json", nil)
 	if err == nil {
 		t.Fatal("expected error for invalid JSON, got nil")
 	}
@@ -189,7 +189,7 @@ func TestUpdateProject_InvalidProjectJson_ReturnsError(t *testing.T) {
 
 func TestUpdateProjectMetadataOnlyWhenNoProjectJSON(t *testing.T) {
 	repo := newMockRepo()
-	service := NewDefenseProjectService(repo)
+	service := NewDefenseProjectService(repo, testAccess{})
 
 	placed := []domain.PlacedDefenseObject{
 		domain.NewPlacedDefenseObject(
@@ -203,7 +203,7 @@ func TestUpdateProjectMetadataOnlyWhenNoProjectJSON(t *testing.T) {
 	existing := newExistingProject(t, "Original", placed)
 	repo.projects["p1"] = existing
 
-	project, err := service.UpdateProject(context.Background(), "p1", "OnlyName", "", "", nil)
+	project, err := service.UpdateProject(context.Background(), "actor", "p1", "OnlyName", nil, "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

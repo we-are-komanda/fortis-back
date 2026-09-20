@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"github.com/fortis/backend/internal/auth"
 	"testing"
 
 	"github.com/fortis/backend/internal/modules/defense_asset/domain"
@@ -86,18 +87,18 @@ func (m *mockDefenseAssetRepo) Delete(ctx context.Context, id string) error {
 
 func TestDefenseAssetService_Create_Success(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewDefenseAssetService(repo)
+	svc := NewDefenseAssetService(repo, testAccess{})
 
 	cat := domain.DefenseAssetCategoryRadar
 	ct := domain.DefenseAssetCoverageCircle
 
-	input := CreateInput{
+	input := CreateInput{EnterpriseID: testString("ent-1"),
 		Name:         "РЛС 55Ж6",
 		Category:     cat,
 		CoverageType: ct,
 	}
 
-	asset, err := svc.Create(context.Background(), input)
+	asset, err := svc.Create(context.Background(), "actor", input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -118,15 +119,15 @@ func TestDefenseAssetService_Create_Success(t *testing.T) {
 
 func TestDefenseAssetService_Create_InvalidName(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewDefenseAssetService(repo)
+	svc := NewDefenseAssetService(repo, testAccess{})
 
-	input := CreateInput{
+	input := CreateInput{EnterpriseID: testString("ent-1"),
 		Name:         "",
 		Category:     domain.DefenseAssetCategoryRadar,
 		CoverageType: domain.DefenseAssetCoverageCircle,
 	}
 
-	_, err := svc.Create(context.Background(), input)
+	_, err := svc.Create(context.Background(), "actor", input)
 	if !errors.Is(err, domain.ErrDefenseAssetInvalidName) {
 		t.Errorf("expected ErrDefenseAssetInvalidName, got %v", err)
 	}
@@ -134,15 +135,15 @@ func TestDefenseAssetService_Create_InvalidName(t *testing.T) {
 
 func TestDefenseAssetService_Create_InvalidCategory(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewDefenseAssetService(repo)
+	svc := NewDefenseAssetService(repo, testAccess{})
 
-	input := CreateInput{
+	input := CreateInput{EnterpriseID: testString("ent-1"),
 		Name:         "Test",
 		Category:     "invalid-category",
 		CoverageType: domain.DefenseAssetCoverageCircle,
 	}
 
-	_, err := svc.Create(context.Background(), input)
+	_, err := svc.Create(context.Background(), "actor", input)
 	if !errors.Is(err, domain.ErrDefenseAssetInvalidCategory) {
 		t.Errorf("expected ErrDefenseAssetInvalidCategory, got %v", err)
 	}
@@ -150,12 +151,12 @@ func TestDefenseAssetService_Create_InvalidCategory(t *testing.T) {
 
 func TestDefenseAssetService_GetByID_Success(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewDefenseAssetService(repo)
+	svc := NewDefenseAssetService(repo, testAccess{})
 
 	cat := domain.DefenseAssetCategoryRadar
 	ct := domain.DefenseAssetCoverageCircle
 
-	created, err := svc.Create(context.Background(), CreateInput{
+	created, err := svc.Create(context.Background(), "actor", CreateInput{EnterpriseID: testString("ent-1"),
 		Name:         "Test Asset",
 		Category:     cat,
 		CoverageType: ct,
@@ -164,7 +165,7 @@ func TestDefenseAssetService_GetByID_Success(t *testing.T) {
 		t.Fatalf("failed to create asset: %v", err)
 	}
 
-	found, err := svc.GetByID(context.Background(), created.ID())
+	found, err := svc.GetByID(context.Background(), "actor", created.ID())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -176,21 +177,21 @@ func TestDefenseAssetService_GetByID_Success(t *testing.T) {
 
 func TestDefenseAssetService_GetByID_NotFound(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewDefenseAssetService(repo)
+	svc := NewDefenseAssetService(repo, testAccess{})
 
-	_, err := svc.GetByID(context.Background(), "non-existent-id")
-	if !errors.Is(err, domain.ErrDefenseAssetNotFound) {
+	_, err := svc.GetByID(context.Background(), "actor", "non-existent-id")
+	if !errors.Is(err, auth.ErrNotFound) {
 		t.Errorf("expected ErrDefenseAssetNotFound, got %v", err)
 	}
 }
 
 func TestDefenseAssetService_List_Success(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewDefenseAssetService(repo)
+	svc := NewDefenseAssetService(repo, testAccess{})
 
 	// Create test assets
 	for range 5 {
-		_, err := svc.Create(context.Background(), CreateInput{
+		_, err := svc.Create(context.Background(), "actor", CreateInput{EnterpriseID: testString("ent-1"),
 			Name:         "Asset",
 			Category:     domain.DefenseAssetCategoryRadar,
 			CoverageType: domain.DefenseAssetCoverageCircle,
@@ -200,7 +201,7 @@ func TestDefenseAssetService_List_Success(t *testing.T) {
 		}
 	}
 
-	assets, total, err := svc.List(context.Background(), nil, nil, nil, 10, 0)
+	assets, total, err := svc.List(context.Background(), "actor", nil, nil, nil, 10, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -215,10 +216,10 @@ func TestDefenseAssetService_List_Success(t *testing.T) {
 
 func TestDefenseAssetService_List_WithPagination(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewDefenseAssetService(repo)
+	svc := NewDefenseAssetService(repo, testAccess{})
 
 	for range 5 {
-		_, err := svc.Create(context.Background(), CreateInput{
+		_, err := svc.Create(context.Background(), "actor", CreateInput{EnterpriseID: testString("ent-1"),
 			Name:         "Asset",
 			Category:     domain.DefenseAssetCategoryRadar,
 			CoverageType: domain.DefenseAssetCoverageCircle,
@@ -228,7 +229,7 @@ func TestDefenseAssetService_List_WithPagination(t *testing.T) {
 		}
 	}
 
-	assets, total, err := svc.List(context.Background(), nil, nil, nil, 2, 0)
+	assets, total, err := svc.List(context.Background(), "actor", nil, nil, nil, 2, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -243,9 +244,9 @@ func TestDefenseAssetService_List_WithPagination(t *testing.T) {
 
 func TestDefenseAssetService_Delete_Success(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewDefenseAssetService(repo)
+	svc := NewDefenseAssetService(repo, testAccess{})
 
-	created, err := svc.Create(context.Background(), CreateInput{
+	created, err := svc.Create(context.Background(), "actor", CreateInput{EnterpriseID: testString("ent-1"),
 		Name:         "Test Asset",
 		Category:     domain.DefenseAssetCategoryRadar,
 		CoverageType: domain.DefenseAssetCoverageCircle,
@@ -254,23 +255,50 @@ func TestDefenseAssetService_Delete_Success(t *testing.T) {
 		t.Fatalf("failed to create asset: %v", err)
 	}
 
-	err = svc.Delete(context.Background(), created.ID())
+	err = svc.Delete(context.Background(), "actor", created.ID())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	_, err = svc.GetByID(context.Background(), created.ID())
-	if !errors.Is(err, domain.ErrDefenseAssetNotFound) {
+	_, err = svc.GetByID(context.Background(), "actor", created.ID())
+	if !errors.Is(err, auth.ErrNotFound) {
 		t.Errorf("expected ErrDefenseAssetNotFound after delete, got %v", err)
 	}
 }
 
 func TestDefenseAssetService_Delete_NotFound(t *testing.T) {
 	repo := newMockRepo()
-	svc := NewDefenseAssetService(repo)
+	svc := NewDefenseAssetService(repo, testAccess{})
 
-	err := svc.Delete(context.Background(), "non-existent-id")
-	if !errors.Is(err, domain.ErrDefenseAssetNotFound) {
+	err := svc.Delete(context.Background(), "actor", "non-existent-id")
+	if !errors.Is(err, auth.ErrNotFound) {
 		t.Errorf("expected ErrDefenseAssetNotFound, got %v", err)
 	}
+}
+
+// Business fixtures grant only their explicit test tenant. HTTP isolation tests use real membership checks.
+type testAccess struct{}
+
+func (testAccess) CheckUserAccess(_ context.Context, actorID, enterpriseID string) error {
+	if actorID != "actor" {
+		return auth.ErrIdentityRequired
+	}
+	if enterpriseID != "ent-1" {
+		return auth.ErrNotFound
+	}
+	return nil
+}
+func testString(s string) *string { return &s }
+func testDocumentAssets(t *testing.T) *DefenseAssetService {
+	t.Helper()
+	repo := newMockRepo()
+	svc := NewDefenseAssetService(repo, testAccess{})
+	for _, id := range []string{"asset-id-123", "asset-1", "asset-2", "asset-id"} {
+		asset, err := svc.Create(context.Background(), "actor", CreateInput{EnterpriseID: testString("ent-1"), Name: "Asset", Category: domain.DefenseAssetCategoryRadar, CoverageType: domain.DefenseAssetCoverageCircle})
+		if err != nil {
+			t.Fatal(err)
+		}
+		repo.assets[id] = asset
+	}
+	return svc
 }

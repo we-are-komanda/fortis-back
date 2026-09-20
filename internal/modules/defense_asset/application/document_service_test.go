@@ -5,6 +5,7 @@ package application
 import (
 	"context"
 	"errors"
+	"github.com/fortis/backend/internal/auth"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -70,7 +71,7 @@ func (m *mockDocumentRepository) Delete(_ context.Context, id string) error {
 
 func TestDocumentService_Create_Success(t *testing.T) {
 	mockRepo := newMockDocumentRepository()
-	service := NewDocumentService(mockRepo)
+	service := NewDocumentService(mockRepo, testDocumentAssets(t))
 
 	input := CreateDocumentInput{
 		AssetID:     "asset-id-123",
@@ -82,7 +83,7 @@ func TestDocumentService_Create_Success(t *testing.T) {
 		OwnerID:     nil,
 	}
 
-	doc, err := service.Create(context.Background(), input)
+	doc, err := service.Create(context.Background(), "actor", input)
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 	assert.Equal(t, "asset-id-123", doc.AssetID())
@@ -95,7 +96,7 @@ func TestDocumentService_Create_Success(t *testing.T) {
 
 func TestDocumentService_Create_InvalidName(t *testing.T) {
 	mockRepo := newMockDocumentRepository()
-	service := NewDocumentService(mockRepo)
+	service := NewDocumentService(mockRepo, testDocumentAssets(t))
 
 	input := CreateDocumentInput{
 		AssetID:    "asset-id-123",
@@ -105,13 +106,13 @@ func TestDocumentService_Create_InvalidName(t *testing.T) {
 		StorageKey: "storage/key/doc.pdf",
 	}
 
-	_, err := service.Create(context.Background(), input)
+	_, err := service.Create(context.Background(), "actor", input)
 	assert.ErrorIs(t, err, domain.ErrDocumentInvalidName)
 }
 
 func TestDocumentService_Create_InvalidAssetID(t *testing.T) {
 	mockRepo := newMockDocumentRepository()
-	service := NewDocumentService(mockRepo)
+	service := NewDocumentService(mockRepo, testDocumentAssets(t))
 
 	input := CreateDocumentInput{
 		AssetID:    "",
@@ -121,13 +122,13 @@ func TestDocumentService_Create_InvalidAssetID(t *testing.T) {
 		StorageKey: "storage/key/doc.pdf",
 	}
 
-	_, err := service.Create(context.Background(), input)
-	assert.ErrorIs(t, err, domain.ErrDocumentInvalidAssetID)
+	_, err := service.Create(context.Background(), "actor", input)
+	assert.ErrorIs(t, err, auth.ErrNotFound)
 }
 
 func TestDocumentService_GetByID_Success(t *testing.T) {
 	mockRepo := newMockDocumentRepository()
-	service := NewDocumentService(mockRepo)
+	service := NewDocumentService(mockRepo, testDocumentAssets(t))
 
 	input := CreateDocumentInput{
 		AssetID:    "asset-id-123",
@@ -137,10 +138,10 @@ func TestDocumentService_GetByID_Success(t *testing.T) {
 		StorageKey: "storage/key/doc.pdf",
 	}
 
-	created, err := service.Create(context.Background(), input)
+	created, err := service.Create(context.Background(), "actor", input)
 	require.NoError(t, err)
 
-	doc, err := service.GetByID(context.Background(), created.ID())
+	doc, err := service.GetByID(context.Background(), "actor", created.ID())
 	require.NoError(t, err)
 	assert.Equal(t, created.ID(), doc.ID())
 	assert.Equal(t, "doc.pdf", doc.Name())
@@ -148,15 +149,15 @@ func TestDocumentService_GetByID_Success(t *testing.T) {
 
 func TestDocumentService_GetByID_NotFound(t *testing.T) {
 	mockRepo := newMockDocumentRepository()
-	service := NewDocumentService(mockRepo)
+	service := NewDocumentService(mockRepo, testDocumentAssets(t))
 
-	_, err := service.GetByID(context.Background(), "non-existent-id")
-	assert.ErrorIs(t, err, domain.ErrDocumentNotFound)
+	_, err := service.GetByID(context.Background(), "actor", "non-existent-id")
+	assert.ErrorIs(t, err, auth.ErrNotFound)
 }
 
 func TestDocumentService_ListByAssetID_Success(t *testing.T) {
 	mockRepo := newMockDocumentRepository()
-	service := NewDocumentService(mockRepo)
+	service := NewDocumentService(mockRepo, testDocumentAssets(t))
 
 	// Create 2 documents for asset-1 and 1 for asset-2
 	docs := []CreateDocumentInput{
@@ -166,26 +167,26 @@ func TestDocumentService_ListByAssetID_Success(t *testing.T) {
 	}
 
 	for _, d := range docs {
-		_, err := service.Create(context.Background(), d)
+		_, err := service.Create(context.Background(), "actor", d)
 		require.NoError(t, err)
 	}
 
-	result, err := service.ListByAssetID(context.Background(), "asset-1")
+	result, err := service.ListByAssetID(context.Background(), "actor", "asset-1")
 	require.NoError(t, err)
 	assert.Len(t, result, 2)
 
-	result2, err := service.ListByAssetID(context.Background(), "asset-2")
+	result2, err := service.ListByAssetID(context.Background(), "actor", "asset-2")
 	require.NoError(t, err)
 	assert.Len(t, result2, 1)
 
-	result3, err := service.ListByAssetID(context.Background(), "non-existent")
-	require.NoError(t, err)
-	assert.Len(t, result3, 0)
+	result3, err := service.ListByAssetID(context.Background(), "actor", "non-existent")
+	require.ErrorIs(t, err, auth.ErrNotFound)
+	assert.Empty(t, result3)
 }
 
 func TestDocumentService_Delete_Success(t *testing.T) {
 	mockRepo := newMockDocumentRepository()
-	service := NewDocumentService(mockRepo)
+	service := NewDocumentService(mockRepo, testDocumentAssets(t))
 
 	input := CreateDocumentInput{
 		AssetID:    "asset-id",
@@ -195,28 +196,28 @@ func TestDocumentService_Delete_Success(t *testing.T) {
 		StorageKey: "storage/key/doc.pdf",
 	}
 
-	created, err := service.Create(context.Background(), input)
+	created, err := service.Create(context.Background(), "actor", input)
 	require.NoError(t, err)
 
-	err = service.Delete(context.Background(), created.ID())
+	err = service.Delete(context.Background(), "actor", created.ID())
 	assert.NoError(t, err)
 
-	_, err = service.GetByID(context.Background(), created.ID())
-	assert.ErrorIs(t, err, domain.ErrDocumentNotFound)
+	_, err = service.GetByID(context.Background(), "actor", created.ID())
+	assert.ErrorIs(t, err, auth.ErrNotFound)
 }
 
 func TestDocumentService_Delete_NotFound(t *testing.T) {
 	mockRepo := newMockDocumentRepository()
-	service := NewDocumentService(mockRepo)
+	service := NewDocumentService(mockRepo, testDocumentAssets(t))
 
-	err := service.Delete(context.Background(), "non-existent")
-	assert.ErrorIs(t, err, domain.ErrDocumentNotFound)
+	err := service.Delete(context.Background(), "actor", "non-existent")
+	assert.ErrorIs(t, err, auth.ErrNotFound)
 }
 
 func TestDocumentService_Create_RepoError(t *testing.T) {
 	mockRepo := newMockDocumentRepository()
 	mockRepo.err = errors.New("db error")
-	service := NewDocumentService(mockRepo)
+	service := NewDocumentService(mockRepo, testDocumentAssets(t))
 
 	input := CreateDocumentInput{
 		AssetID:    "asset-id",
@@ -226,6 +227,6 @@ func TestDocumentService_Create_RepoError(t *testing.T) {
 		StorageKey: "storage/key/doc.pdf",
 	}
 
-	_, err := service.Create(context.Background(), input)
+	_, err := service.Create(context.Background(), "actor", input)
 	assert.ErrorContains(t, err, "save document")
 }

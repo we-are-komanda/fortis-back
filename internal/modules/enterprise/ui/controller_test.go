@@ -26,11 +26,11 @@ type mockService struct {
 	deleteErr        error
 }
 
-func (m *mockService) Create(ctx context.Context, name, address string, status domain.EnterpriseStatus, latitude, longitude float64) (*domain.Enterprise, error) {
+func (m *mockService) Create(ctx context.Context, actorID string, name, address string, status domain.EnterpriseStatus, latitude, longitude float64) (*domain.Enterprise, error) {
 	return m.createEnterprise, m.createErr
 }
 
-func (m *mockService) Get(ctx context.Context, id string) (*domain.Enterprise, error) {
+func (m *mockService) Get(ctx context.Context, actorID string, id string) (*domain.Enterprise, error) {
 	return m.getEnterprise, m.getErr
 }
 
@@ -38,11 +38,11 @@ func (m *mockService) List(ctx context.Context, limit, offset int) ([]*domain.En
 	return m.listEnterprises, m.listTotal, m.listErr
 }
 
-func (m *mockService) Update(ctx context.Context, id, name, address string, status domain.EnterpriseStatus, latitude, longitude float64) (*domain.Enterprise, error) {
+func (m *mockService) Update(ctx context.Context, actorID string, id, name, address string, status domain.EnterpriseStatus, latitude, longitude float64) (*domain.Enterprise, error) {
 	return m.updateEnterprise, m.updateErr
 }
 
-func (m *mockService) Delete(ctx context.Context, id string) error {
+func (m *mockService) Delete(ctx context.Context, actorID string, id string) error {
 	return m.deleteErr
 }
 
@@ -54,11 +54,11 @@ func (m *mockService) CheckUserAccess(ctx context.Context, userID, enterpriseID 
 	return nil
 }
 
-func (m *mockService) AddUser(ctx context.Context, userID, enterpriseID string) error {
+func (m *mockService) AddUser(ctx context.Context, actorID string, userID, enterpriseID string) error {
 	return nil
 }
 
-func (m *mockService) RemoveUser(ctx context.Context, userID, enterpriseID string) error {
+func (m *mockService) RemoveUser(ctx context.Context, actorID string, userID, enterpriseID string) error {
 	return nil
 }
 

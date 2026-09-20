@@ -3,6 +3,8 @@ package application
 import (
 	"context"
 	"errors"
+	"github.com/fortis/backend/internal/auth"
+	projectApp "github.com/fortis/backend/internal/modules/defense_project/application"
 	"testing"
 	"time"
 
@@ -175,12 +177,12 @@ func TestBudgetService_GetBudgetConfig(t *testing.T) {
 	ctx := context.Background()
 	budgetConfig, _ := budgetDomain.NewBudgetConfig("proj-1", budgetDomain.BudgetModeLimited, 5000)
 
-	svc := NewBudgetService(
+	svc := newTestBudgetService(
 		&mockBudgetRepo{configs: map[string]*budgetDomain.BudgetConfig{"proj-1": budgetConfig}},
-		&mockProjectRepo{},
+		&mockProjectRepo{projects: map[string]*defenseDomain.DefenseProject{"proj-1": makeTestProject(t)}},
 	)
 
-	config, err := svc.GetBudgetConfig(ctx, "proj-1")
+	config, err := svc.GetBudgetConfig(ctx, "actor", "proj-1")
 	if err != nil {
 		t.Fatalf("GetBudgetConfig() unexpected error: %v", err)
 	}
@@ -193,12 +195,12 @@ func TestBudgetService_GetBudgetConfig_NotFound(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	svc := NewBudgetService(
+	svc := newTestBudgetService(
 		&mockBudgetRepo{configs: map[string]*budgetDomain.BudgetConfig{}},
-		&mockProjectRepo{},
+		&mockProjectRepo{projects: map[string]*defenseDomain.DefenseProject{"proj-1": makeTestProject(t)}},
 	)
 
-	_, err := svc.GetBudgetConfig(ctx, "nonexistent")
+	_, err := svc.GetBudgetConfig(ctx, "actor", "proj-1")
 	if !errors.Is(err, budgetDomain.ErrBudgetConfigNotFound) {
 		t.Errorf("expected ErrBudgetConfigNotFound, got %v", err)
 	}
@@ -209,9 +211,9 @@ func TestBudgetService_UpdateBudgetConfig_Create(t *testing.T) {
 
 	ctx := context.Background()
 	repo := &mockBudgetRepo{configs: map[string]*budgetDomain.BudgetConfig{}}
-	svc := NewBudgetService(repo, &mockProjectRepo{})
+	svc := newTestBudgetService(repo, &mockProjectRepo{projects: map[string]*defenseDomain.DefenseProject{"proj-1": makeTestProject(t)}})
 
-	err := svc.UpdateBudgetConfig(ctx, "proj-1", budgetDomain.BudgetModeLimited, 10000)
+	err := svc.UpdateBudgetConfig(ctx, "actor", "proj-1", budgetDomain.BudgetModeLimited, 10000)
 	if err != nil {
 		t.Fatalf("UpdateBudgetConfig() unexpected error: %v", err)
 	}
@@ -231,9 +233,9 @@ func TestBudgetService_UpdateBudgetConfig_Update(t *testing.T) {
 	ctx := context.Background()
 	existing, _ := budgetDomain.NewBudgetConfig("proj-1", budgetDomain.BudgetModeLimited, 5000)
 	repo := &mockBudgetRepo{configs: map[string]*budgetDomain.BudgetConfig{"proj-1": existing}}
-	svc := NewBudgetService(repo, &mockProjectRepo{})
+	svc := newTestBudgetService(repo, &mockProjectRepo{projects: map[string]*defenseDomain.DefenseProject{"proj-1": makeTestProject(t)}})
 
-	err := svc.UpdateBudgetConfig(ctx, "proj-1", budgetDomain.BudgetModeLimited, 15000)
+	err := svc.UpdateBudgetConfig(ctx, "actor", "proj-1", budgetDomain.BudgetModeLimited, 15000)
 	if err != nil {
 		t.Fatalf("UpdateBudgetConfig() unexpected error: %v", err)
 	}
@@ -250,12 +252,12 @@ func TestBudgetService_CalculateCost(t *testing.T) {
 	ctx := context.Background()
 	project := makeTestProject(t)
 
-	svc := NewBudgetService(
+	svc := newTestBudgetService(
 		&mockBudgetRepo{configs: map[string]*budgetDomain.BudgetConfig{}},
 		&mockProjectRepo{projects: map[string]*defenseDomain.DefenseProject{"proj-1": project}},
 	)
 
-	calc, err := svc.CalculateCost(ctx, "proj-1")
+	calc, err := svc.CalculateCost(ctx, "actor", "proj-1")
 	if err != nil {
 		t.Fatalf("CalculateCost() unexpected error: %v", err)
 	}
@@ -304,13 +306,13 @@ func TestBudgetService_CheckBudget_Limited_Fits(t *testing.T) {
 	project := makeTestProject(t)
 	budgetConfig, _ := budgetDomain.NewBudgetConfig("proj-1", budgetDomain.BudgetModeLimited, 1000)
 
-	svc := NewBudgetService(
+	svc := newTestBudgetService(
 		&mockBudgetRepo{configs: map[string]*budgetDomain.BudgetConfig{"proj-1": budgetConfig}},
 		&mockProjectRepo{projects: map[string]*defenseDomain.DefenseProject{"proj-1": project}},
 	)
 
 	input := budgetDomain.NewBudgetCheckInput("asset-1", 1, "echelon-1")
-	result, err := svc.CheckBudget(ctx, "proj-1", input)
+	result, err := svc.CheckBudget(ctx, "actor", "proj-1", input)
 	if err != nil {
 		t.Fatalf("CheckBudget() unexpected error: %v", err)
 	}
@@ -337,13 +339,13 @@ func TestBudgetService_CheckBudget_Limited_DoesNotFit(t *testing.T) {
 	project := makeTestProject(t)
 	budgetConfig, _ := budgetDomain.NewBudgetConfig("proj-1", budgetDomain.BudgetModeLimited, 150)
 
-	svc := NewBudgetService(
+	svc := newTestBudgetService(
 		&mockBudgetRepo{configs: map[string]*budgetDomain.BudgetConfig{"proj-1": budgetConfig}},
 		&mockProjectRepo{projects: map[string]*defenseDomain.DefenseProject{"proj-1": project}},
 	)
 
 	input := budgetDomain.NewBudgetCheckInput("asset-1", 1, "echelon-1")
-	result, err := svc.CheckBudget(ctx, "proj-1", input)
+	result, err := svc.CheckBudget(ctx, "actor", "proj-1", input)
 	if err != nil {
 		t.Fatalf("CheckBudget() unexpected error: %v", err)
 	}
@@ -359,13 +361,13 @@ func TestBudgetService_CheckBudget_Unlimited(t *testing.T) {
 	ctx := context.Background()
 	budgetConfig, _ := budgetDomain.NewBudgetConfig("proj-1", budgetDomain.BudgetModeUnlimited, 0)
 
-	svc := NewBudgetService(
+	svc := newTestBudgetService(
 		&mockBudgetRepo{configs: map[string]*budgetDomain.BudgetConfig{"proj-1": budgetConfig}},
-		&mockProjectRepo{},
+		&mockProjectRepo{projects: map[string]*defenseDomain.DefenseProject{"proj-1": makeTestProject(t)}},
 	)
 
 	input := budgetDomain.NewBudgetCheckInput("asset-1", 10, "echelon-1")
-	result, err := svc.CheckBudget(ctx, "proj-1", input)
+	result, err := svc.CheckBudget(ctx, "actor", "proj-1", input)
 	if err != nil {
 		t.Fatalf("CheckBudget() unexpected error: %v", err)
 	}
@@ -385,7 +387,7 @@ func TestBudgetService_CompareConfigs_Success(t *testing.T) {
 	projectA := makeTestProject(t)
 	projectB := makeTestProjectWithDifferentData(t)
 
-	svc := NewBudgetService(
+	svc := newTestBudgetService(
 		&mockBudgetRepo{configs: map[string]*budgetDomain.BudgetConfig{}},
 		&mockProjectRepo{
 			projects: map[string]*defenseDomain.DefenseProject{
@@ -395,7 +397,7 @@ func TestBudgetService_CompareConfigs_Success(t *testing.T) {
 		},
 	)
 
-	comp, err := svc.CompareConfigs(ctx, "proj-1", "proj-2")
+	comp, err := svc.CompareConfigs(ctx, "actor", "proj-1", "proj-2")
 	if err != nil {
 		t.Fatalf("CompareConfigs() unexpected error: %v", err)
 	}
@@ -432,19 +434,19 @@ func TestBudgetService_CompareConfigs_EmptyIDs(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	svc := NewBudgetService(&mockBudgetRepo{}, &mockProjectRepo{})
+	svc := newTestBudgetService(&mockBudgetRepo{}, &mockProjectRepo{projects: map[string]*defenseDomain.DefenseProject{"proj-1": makeTestProject(t)}})
 
-	_, err := svc.CompareConfigs(ctx, "", "")
+	_, err := svc.CompareConfigs(ctx, "actor", "", "")
 	if !errors.Is(err, budgetDomain.ErrBothIDsRequired) {
 		t.Errorf("error = %v, want ErrBothIDsRequired", err)
 	}
 
-	_, err = svc.CompareConfigs(ctx, "proj-1", "")
+	_, err = svc.CompareConfigs(ctx, "actor", "proj-1", "")
 	if !errors.Is(err, budgetDomain.ErrBothIDsRequired) {
 		t.Errorf("error = %v, want ErrBothIDsRequired", err)
 	}
 
-	_, err = svc.CompareConfigs(ctx, "", "proj-2")
+	_, err = svc.CompareConfigs(ctx, "actor", "", "proj-2")
 	if !errors.Is(err, budgetDomain.ErrBothIDsRequired) {
 		t.Errorf("error = %v, want ErrBothIDsRequired", err)
 	}
@@ -456,7 +458,7 @@ func TestBudgetService_CompareConfigs_ProjectNotFound(t *testing.T) {
 	ctx := context.Background()
 	projectA := makeTestProject(t)
 
-	svc := NewBudgetService(
+	svc := newTestBudgetService(
 		&mockBudgetRepo{configs: map[string]*budgetDomain.BudgetConfig{}},
 		&mockProjectRepo{
 			projects: map[string]*defenseDomain.DefenseProject{
@@ -465,7 +467,7 @@ func TestBudgetService_CompareConfigs_ProjectNotFound(t *testing.T) {
 		},
 	)
 
-	_, err := svc.CompareConfigs(ctx, "proj-1", "nonexistent")
+	_, err := svc.CompareConfigs(ctx, "actor", "proj-1", "nonexistent")
 	if err == nil {
 		t.Fatal("CompareConfigs() expected error, got nil")
 	}
@@ -477,7 +479,7 @@ func TestBudgetService_CompareConfigs_SameProject(t *testing.T) {
 	ctx := context.Background()
 	project := makeTestProject(t)
 
-	svc := NewBudgetService(
+	svc := newTestBudgetService(
 		&mockBudgetRepo{configs: map[string]*budgetDomain.BudgetConfig{}},
 		&mockProjectRepo{
 			projects: map[string]*defenseDomain.DefenseProject{
@@ -486,7 +488,7 @@ func TestBudgetService_CompareConfigs_SameProject(t *testing.T) {
 		},
 	)
 
-	comp, err := svc.CompareConfigs(ctx, "proj-1", "proj-1")
+	comp, err := svc.CompareConfigs(ctx, "actor", "proj-1", "proj-1")
 	if err != nil {
 		t.Fatalf("CompareConfigs() unexpected error: %v", err)
 	}
@@ -657,12 +659,12 @@ func TestBudgetService_CalculateCost_WithCustomPrice(t *testing.T) {
 		t.Fatalf("NewDefenseProject() unexpected error: %v", err)
 	}
 
-	svc := NewBudgetService(
+	svc := newTestBudgetService(
 		&mockBudgetRepo{},
 		&mockProjectRepo{projects: map[string]*defenseDomain.DefenseProject{"proj-2": project}},
 	)
 
-	calc, err := svc.CalculateCost(ctx, "proj-2")
+	calc, err := svc.CalculateCost(ctx, "actor", "proj-2")
 	if err != nil {
 		t.Fatalf("CalculateCost() unexpected error: %v", err)
 	}
@@ -671,4 +673,23 @@ func TestBudgetService_CalculateCost_WithCustomPrice(t *testing.T) {
 	if calc.TotalMln() != 50 {
 		t.Errorf("TotalMln() = %f, want 50 (custom price)", calc.TotalMln())
 	}
+}
+
+// Business fixtures grant only their explicit test tenant. HTTP isolation tests use real membership checks.
+type testAccess struct{}
+
+func (testAccess) CheckUserAccess(_ context.Context, actorID, enterpriseID string) error {
+	if actorID != "actor" {
+		return auth.ErrIdentityRequired
+	}
+	if enterpriseID != "ent-1" {
+		return auth.ErrNotFound
+	}
+	return nil
+}
+func (m *mockProjectRepo) FindAllByUserID(ctx context.Context, userID string, limit, offset int) ([]*defenseDomain.DefenseProject, int64, error) {
+	return m.FindAllByEnterprise(ctx, "ent-1", limit, offset)
+}
+func newTestBudgetService(repo budgetDomain.BudgetConfigRepositoryInterface, projects *mockProjectRepo) *BudgetService {
+	return NewBudgetService(repo, projectApp.NewDefenseProjectService(projects, testAccess{}))
 }

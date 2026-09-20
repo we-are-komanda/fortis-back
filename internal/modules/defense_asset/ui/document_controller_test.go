@@ -16,25 +16,25 @@ import (
 
 // mockDocumentService — мок сервиса для тестирования контроллера документов.
 type mockDocumentService struct {
-	createFn       func(ctx context.Context, input application.CreateDocumentInput) (*domain.Document, error)
-	getByIDFn      func(ctx context.Context, id string) (*domain.Document, error)
+	createFn        func(ctx context.Context, input application.CreateDocumentInput) (*domain.Document, error)
+	getByIDFn       func(ctx context.Context, id string) (*domain.Document, error)
 	listByAssetIDFn func(ctx context.Context, assetID string) ([]*domain.Document, error)
-	deleteFn       func(ctx context.Context, id string) error
+	deleteFn        func(ctx context.Context, id string) error
 }
 
-func (m *mockDocumentService) Create(ctx context.Context, input application.CreateDocumentInput) (*domain.Document, error) {
+func (m *mockDocumentService) Create(ctx context.Context, actorID string, input application.CreateDocumentInput) (*domain.Document, error) {
 	return m.createFn(ctx, input)
 }
 
-func (m *mockDocumentService) GetByID(ctx context.Context, id string) (*domain.Document, error) {
+func (m *mockDocumentService) GetByID(ctx context.Context, actorID string, id string) (*domain.Document, error) {
 	return m.getByIDFn(ctx, id)
 }
 
-func (m *mockDocumentService) ListByAssetID(ctx context.Context, assetID string) ([]*domain.Document, error) {
+func (m *mockDocumentService) ListByAssetID(ctx context.Context, actorID string, assetID string) ([]*domain.Document, error) {
 	return m.listByAssetIDFn(ctx, assetID)
 }
 
-func (m *mockDocumentService) Delete(ctx context.Context, id string) error {
+func (m *mockDocumentService) Delete(ctx context.Context, actorID string, id string) error {
 	return m.deleteFn(ctx, id)
 }
 

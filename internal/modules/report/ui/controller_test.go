@@ -18,7 +18,7 @@ type mockReportService struct {
 	err     error
 }
 
-func (m *mockReportService) GetReport(ctx context.Context, projectID string, hideCost bool) (*domain.ReportPayload, error) {
+func (m *mockReportService) GetReport(ctx context.Context, actorID string, projectID string, hideCost bool) (*domain.ReportPayload, error) {
 	return m.payload, m.err
 }
 

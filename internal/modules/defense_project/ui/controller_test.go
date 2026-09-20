@@ -24,27 +24,27 @@ type mockService struct {
 	crudErr       error
 }
 
-func (m *mockService) Import(ctx context.Context, rawJSON string) (*domain.DefenseProject, error) {
+func (m *mockService) Import(ctx context.Context, actorID string, rawJSON string) (*domain.DefenseProject, error) {
 	return m.importProject, m.importErr
 }
 
-func (m *mockService) Export(ctx context.Context, projectID string) (string, error) {
+func (m *mockService) Export(ctx context.Context, actorID string, projectID string) (string, error) {
 	return m.exportJSON, m.exportErr
 }
 
-func (m *mockService) CreateFromJSON(ctx context.Context, name, enterpriseID, rawJSON string) (*domain.DefenseProject, error) {
+func (m *mockService) CreateFromJSON(ctx context.Context, actorID string, name, enterpriseID, rawJSON string) (*domain.DefenseProject, error) {
 	return m.importProject, m.importErr
 }
 
-func (m *mockService) ListProjects(ctx context.Context, enterpriseID string, limit, offset int) ([]*domain.DefenseProject, int64, error) {
+func (m *mockService) ListProjects(ctx context.Context, actorID string, enterpriseID string, limit, offset int) ([]*domain.DefenseProject, int64, error) {
 	return m.projects, m.totalItems, m.crudErr
 }
 
-func (m *mockService) GetProject(ctx context.Context, id string) (*domain.DefenseProject, error) {
+func (m *mockService) GetProject(ctx context.Context, actorID string, id string) (*domain.DefenseProject, error) {
 	return m.projectByID, m.crudErr
 }
 
-func (m *mockService) UpdateProject(ctx context.Context, id, name, enterpriseID, projectJSON string, version *int) (*domain.DefenseProject, error) {
+func (m *mockService) UpdateProject(ctx context.Context, actorID string, id, name string, enterpriseID *string, projectJSON string, version *int) (*domain.DefenseProject, error) {
 	if m.crudErr != nil {
 		return nil, m.crudErr
 	}
@@ -54,7 +54,7 @@ func (m *mockService) UpdateProject(ctx context.Context, id, name, enterpriseID,
 	return m.projectByID, nil
 }
 
-func (m *mockService) DeleteProject(ctx context.Context, id string) error {
+func (m *mockService) DeleteProject(ctx context.Context, actorID string, id string) error {
 	return m.crudErr
 }
 

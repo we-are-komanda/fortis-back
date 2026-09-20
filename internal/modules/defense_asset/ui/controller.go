@@ -15,11 +15,11 @@ import (
 
 // DefenseAssetServiceInterface — интерфейс сервиса для управления средствами защиты.
 type DefenseAssetServiceInterface interface {
-	Create(ctx context.Context, input application.CreateInput) (*domain.DefenseAsset, error)
-	GetByID(ctx context.Context, id string) (*domain.DefenseAsset, error)
-	List(ctx context.Context, enterpriseID *string, isPublic *bool, category *domain.DefenseAssetCategory, limit, offset int) ([]*domain.DefenseAsset, int64, error)
-	Update(ctx context.Context, input application.UpdateInput) (*domain.DefenseAsset, error)
-	Delete(ctx context.Context, id string) error
+	Create(ctx context.Context, actorID string, input application.CreateInput) (*domain.DefenseAsset, error)
+	GetByID(ctx context.Context, actorID string, id string) (*domain.DefenseAsset, error)
+	List(ctx context.Context, actorID string, enterpriseID *string, isPublic *bool, category *domain.DefenseAssetCategory, limit, offset int) ([]*domain.DefenseAsset, int64, error)
+	Update(ctx context.Context, actorID string, input application.UpdateInput) (*domain.DefenseAsset, error)
+	Delete(ctx context.Context, actorID string, id string) error
 }
 
 // DefenseAssetController — контроллер для управления средствами защиты.
@@ -84,8 +84,11 @@ func (c *DefenseAssetController) List(ctx *fasthttp.RequestCtx) {
 		category = &cat
 	}
 
-	assets, total, err := c.service.List(ctx, enterpriseID, isPublic, category, limit, offset)
+	assets, total, err := c.service.List(ctx, handlers.ActorID(ctx), enterpriseID, isPublic, category, limit, offset)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		handlers.ErrorHandler(ctx, "internal_error", "failed to list defense assets", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
 		return
 	}
@@ -130,8 +133,11 @@ func (c *DefenseAssetController) Get(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	asset, err := c.service.GetByID(ctx, id)
+	asset, err := c.service.GetByID(ctx, handlers.ActorID(ctx), id)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrDefenseAssetNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "defense asset not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
@@ -188,8 +194,11 @@ func (c *DefenseAssetController) Create(ctx *fasthttp.RequestCtx) {
 	}
 
 	input := mapCreateRequestToDomain(req)
-	asset, err := c.service.Create(ctx, input)
+	asset, err := c.service.Create(ctx, handlers.ActorID(ctx), input)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrDefenseAssetInvalidName):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
@@ -245,8 +254,11 @@ func (c *DefenseAssetController) Update(ctx *fasthttp.RequestCtx) {
 	}
 
 	input := mapUpdateRequestToServiceInput(id, req)
-	asset, err := c.service.Update(ctx, input)
+	asset, err := c.service.Update(ctx, handlers.ActorID(ctx), input)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrDefenseAssetNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "defense asset not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
@@ -290,8 +302,11 @@ func (c *DefenseAssetController) Delete(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	err := c.service.Delete(ctx, id)
+	err := c.service.Delete(ctx, handlers.ActorID(ctx), id)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrDefenseAssetNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "defense asset not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)

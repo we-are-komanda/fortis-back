@@ -3,6 +3,9 @@ package application
 import (
 	"context"
 	"errors"
+	"github.com/fortis/backend/internal/auth"
+	assetApp "github.com/fortis/backend/internal/modules/defense_asset/application"
+	projectApp "github.com/fortis/backend/internal/modules/defense_project/application"
 	"testing"
 	"time"
 
@@ -51,7 +54,7 @@ type mockBudgetSvc struct {
 	err  error
 }
 
-func (m *mockBudgetSvc) CalculateCost(ctx context.Context, projectID string) (*budgetDomain.CostCalculation, error) {
+func (m *mockBudgetSvc) CalculateCost(ctx context.Context, actorID, projectID string) (*budgetDomain.CostCalculation, error) {
 	return m.calc, m.err
 }
 
@@ -70,7 +73,7 @@ func (m *mockAssetRepo) FindByID(ctx context.Context, id string) (*defenseAssetD
 	}
 	a, ok := m.assets[id]
 	if !ok {
-		return nil, errors.New("asset not found")
+		return nil, defenseAssetDomain.ErrDefenseAssetNotFound
 	}
 	return a, nil
 }
@@ -182,13 +185,13 @@ func TestReportService_GetReport_Success(t *testing.T) {
 	project := makeTestProject(t, true)
 	calc := makeTestCalc(t, true)
 
-	svc := NewReportService(
+	svc := newTestReportService(
 		&mockProjectRepo{projects: map[string]*defenseDomain.DefenseProject{"proj-1": project}},
 		&mockBudgetSvc{calc: calc},
 		&mockAssetRepo{assets: map[string]*defenseAssetDomain.DefenseAsset{}},
 	)
 
-	payload, err := svc.GetReport(context.Background(), "proj-1", false)
+	payload, err := svc.GetReport(context.Background(), "actor", "proj-1", false)
 	if err != nil {
 		t.Fatalf("GetReport() unexpected error: %v", err)
 	}
@@ -251,13 +254,13 @@ func TestReportService_GetReport_EmptyConfig(t *testing.T) {
 	project := makeTestProject(t, false)
 	calc := makeTestCalc(t, false)
 
-	svc := NewReportService(
+	svc := newTestReportService(
 		&mockProjectRepo{projects: map[string]*defenseDomain.DefenseProject{"proj-1": project}},
 		&mockBudgetSvc{calc: calc},
 		&mockAssetRepo{},
 	)
 
-	payload, err := svc.GetReport(context.Background(), "proj-1", false)
+	payload, err := svc.GetReport(context.Background(), "actor", "proj-1", false)
 	if err != nil {
 		t.Fatalf("GetReport() unexpected error: %v", err)
 	}
@@ -290,13 +293,13 @@ func TestReportService_GetReport_HideCost(t *testing.T) {
 	project := makeTestProject(t, true)
 	calc := makeTestCalc(t, true)
 
-	svc := NewReportService(
+	svc := newTestReportService(
 		&mockProjectRepo{projects: map[string]*defenseDomain.DefenseProject{"proj-1": project}},
 		&mockBudgetSvc{calc: calc},
 		&mockAssetRepo{assets: map[string]*defenseAssetDomain.DefenseAsset{}},
 	)
 
-	payload, err := svc.GetReport(context.Background(), "proj-1", true)
+	payload, err := svc.GetReport(context.Background(), "actor", "proj-1", true)
 	if err != nil {
 		t.Fatalf("GetReport() unexpected error: %v", err)
 	}
@@ -336,13 +339,13 @@ func TestReportService_GetReport_HideCost(t *testing.T) {
 func TestReportService_GetReport_InvalidProjectID(t *testing.T) {
 	t.Parallel()
 
-	svc := NewReportService(
+	svc := newTestReportService(
 		&mockProjectRepo{},
 		&mockBudgetSvc{},
 		&mockAssetRepo{},
 	)
 
-	_, err := svc.GetReport(context.Background(), "", false)
+	_, err := svc.GetReport(context.Background(), "actor", "", false)
 	if err == nil {
 		t.Fatal("GetReport() expected error for empty project ID")
 	}
@@ -354,7 +357,7 @@ func TestReportService_GetReport_InvalidProjectID(t *testing.T) {
 func TestReportService_GetReport_ProjectNotFound(t *testing.T) {
 	t.Parallel()
 
-	svc := NewReportService(
+	svc := newTestReportService(
 		&mockProjectRepo{
 			projects: map[string]*defenseDomain.DefenseProject{},
 		},
@@ -362,11 +365,11 @@ func TestReportService_GetReport_ProjectNotFound(t *testing.T) {
 		&mockAssetRepo{},
 	)
 
-	_, err := svc.GetReport(context.Background(), "nonexistent", false)
+	_, err := svc.GetReport(context.Background(), "actor", "nonexistent", false)
 	if err == nil {
 		t.Fatal("GetReport() expected error for nonexistent project")
 	}
-	if !errors.Is(err, reportDomain.ErrProjectNotFound) {
+	if !errors.Is(err, auth.ErrNotFound) {
 		t.Errorf("GetReport() error = %v, want ErrProjectNotFound", err)
 	}
 }
@@ -472,7 +475,8 @@ func TestReportService_GetReport_CompoundPost(t *testing.T) {
 		t.Fatalf("failed to create full asset: %v", err)
 	}
 
-	svc := NewReportService(
+	fullAsset.SetEnterpriseID(strPtr("ent-1"))
+	svc := newTestReportService(
 		&mockProjectRepo{projects: map[string]*defenseDomain.DefenseProject{"proj-compound": project}},
 		&mockBudgetSvc{calc: calc},
 		&mockAssetRepo{
@@ -480,7 +484,7 @@ func TestReportService_GetReport_CompoundPost(t *testing.T) {
 		},
 	)
 
-	payload, err := svc.GetReport(context.Background(), "proj-compound", false)
+	payload, err := svc.GetReport(context.Background(), "actor", "proj-compound", false)
 	if err != nil {
 		t.Fatalf("GetReport() unexpected error: %v", err)
 	}
@@ -546,3 +550,22 @@ func intPtr(i int) *int { return &i }
 func boolPtr(b bool) *bool { return &b }
 
 func nowTime() time.Time { return time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC) }
+
+// Business fixtures grant only their explicit test tenant. HTTP isolation tests use real membership checks.
+type testAccess struct{}
+
+func (testAccess) CheckUserAccess(_ context.Context, actorID, enterpriseID string) error {
+	if actorID != "actor" {
+		return auth.ErrIdentityRequired
+	}
+	if enterpriseID != "ent-1" {
+		return auth.ErrNotFound
+	}
+	return nil
+}
+func (m *mockProjectRepo) FindAllByUserID(ctx context.Context, userID string, limit, offset int) ([]*defenseDomain.DefenseProject, int64, error) {
+	return m.FindAllByEnterprise(ctx, "ent-1", limit, offset)
+}
+func newTestReportService(projects *mockProjectRepo, budget BudgetServiceInterface, assets *mockAssetRepo) *ReportService {
+	return NewReportService(projectApp.NewDefenseProjectService(projects, testAccess{}), budget, assetApp.NewDefenseAssetService(assets, testAccess{}))
+}

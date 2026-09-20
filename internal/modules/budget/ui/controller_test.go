@@ -14,30 +14,30 @@ import (
 // ---- Mock Service ----
 
 type mockBudgetService struct {
-	getConfigFn     func(ctx context.Context, projectID string) (*domain.BudgetConfig, error)
-	updateConfigFn  func(ctx context.Context, projectID string, mode domain.BudgetMode, amountMln float64) error
-	calcCostFn      func(ctx context.Context, projectID string) (*domain.CostCalculation, error)
-	checkBudgetFn   func(ctx context.Context, projectID string, input domain.BudgetCheckInput) (*domain.BudgetCheckResult, error)
+	getConfigFn      func(ctx context.Context, projectID string) (*domain.BudgetConfig, error)
+	updateConfigFn   func(ctx context.Context, projectID string, mode domain.BudgetMode, amountMln float64) error
+	calcCostFn       func(ctx context.Context, projectID string) (*domain.CostCalculation, error)
+	checkBudgetFn    func(ctx context.Context, projectID string, input domain.BudgetCheckInput) (*domain.BudgetCheckResult, error)
 	compareConfigsFn func(ctx context.Context, projectID1, projectID2 string) (*domain.ConfigComparison, error)
 }
 
-func (m *mockBudgetService) GetBudgetConfig(ctx context.Context, projectID string) (*domain.BudgetConfig, error) {
+func (m *mockBudgetService) GetBudgetConfig(ctx context.Context, actorID string, projectID string) (*domain.BudgetConfig, error) {
 	return m.getConfigFn(ctx, projectID)
 }
 
-func (m *mockBudgetService) UpdateBudgetConfig(ctx context.Context, projectID string, mode domain.BudgetMode, amountMln float64) error {
+func (m *mockBudgetService) UpdateBudgetConfig(ctx context.Context, actorID string, projectID string, mode domain.BudgetMode, amountMln float64) error {
 	return m.updateConfigFn(ctx, projectID, mode, amountMln)
 }
 
-func (m *mockBudgetService) CalculateCost(ctx context.Context, projectID string) (*domain.CostCalculation, error) {
+func (m *mockBudgetService) CalculateCost(ctx context.Context, actorID string, projectID string) (*domain.CostCalculation, error) {
 	return m.calcCostFn(ctx, projectID)
 }
 
-func (m *mockBudgetService) CheckBudget(ctx context.Context, projectID string, input domain.BudgetCheckInput) (*domain.BudgetCheckResult, error) {
+func (m *mockBudgetService) CheckBudget(ctx context.Context, actorID string, projectID string, input domain.BudgetCheckInput) (*domain.BudgetCheckResult, error) {
 	return m.checkBudgetFn(ctx, projectID, input)
 }
 
-func (m *mockBudgetService) CompareConfigs(ctx context.Context, projectID1, projectID2 string) (*domain.ConfigComparison, error) {
+func (m *mockBudgetService) CompareConfigs(ctx context.Context, actorID string, projectID1, projectID2 string) (*domain.ConfigComparison, error) {
 	return m.compareConfigsFn(ctx, projectID1, projectID2)
 }
 
@@ -245,8 +245,8 @@ func TestBudgetController_CheckBudget_Success(t *testing.T) {
 	})
 
 	body, _ := json.Marshal(BudgetCheckRequest{
-		AssetID:  "asset-1",
-		Quantity: 1,
+		AssetID:   "asset-1",
+		Quantity:  1,
 		EchelonID: "echelon-1",
 	})
 

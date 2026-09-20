@@ -14,10 +14,10 @@ import (
 
 // DocumentServiceInterface — интерфейс сервиса для управления документами.
 type DocumentServiceInterface interface {
-	Create(ctx context.Context, input application.CreateDocumentInput) (*domain.Document, error)
-	GetByID(ctx context.Context, id string) (*domain.Document, error)
-	ListByAssetID(ctx context.Context, assetID string) ([]*domain.Document, error)
-	Delete(ctx context.Context, id string) error
+	Create(ctx context.Context, actorID string, input application.CreateDocumentInput) (*domain.Document, error)
+	GetByID(ctx context.Context, actorID string, id string) (*domain.Document, error)
+	ListByAssetID(ctx context.Context, actorID string, assetID string) ([]*domain.Document, error)
+	Delete(ctx context.Context, actorID string, id string) error
 }
 
 // DocumentController — контроллер для управления документами средства защиты.
@@ -52,8 +52,11 @@ func (c *DocumentController) List(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	documents, err := c.service.ListByAssetID(ctx, assetID)
+	documents, err := c.service.ListByAssetID(ctx, handlers.ActorID(ctx), assetID)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		handlers.ErrorHandler(ctx, "internal_error", "failed to list documents", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
 		return
 	}
@@ -98,8 +101,11 @@ func (c *DocumentController) Get(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	doc, err := c.service.GetByID(ctx, id)
+	doc, err := c.service.GetByID(ctx, handlers.ActorID(ctx), id)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrDocumentNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "document not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
@@ -156,8 +162,11 @@ func (c *DocumentController) Create(ctx *fasthttp.RequestCtx) {
 	}
 
 	input := mapCreateDocumentRequestToServiceInput(req)
-	doc, err := c.service.Create(ctx, input)
+	doc, err := c.service.Create(ctx, handlers.ActorID(ctx), input)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrDocumentInvalidName):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
@@ -203,8 +212,11 @@ func (c *DocumentController) Download(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	doc, err := c.service.GetByID(ctx, id)
+	doc, err := c.service.GetByID(ctx, handlers.ActorID(ctx), id)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrDocumentNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "document not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
@@ -242,8 +254,11 @@ func (c *DocumentController) Delete(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	err := c.service.Delete(ctx, id)
+	err := c.service.Delete(ctx, handlers.ActorID(ctx), id)
 	if err != nil {
+		if handlers.AuthorizationError(ctx, err) {
+			return
+		}
 		switch {
 		case errors.Is(err, domain.ErrDocumentNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "document not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
