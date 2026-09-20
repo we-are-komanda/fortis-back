@@ -65,6 +65,11 @@ func (DefenseAssetModel) TableName() string {
 
 // DefenseAssetDocumentModel — GORM-модель для хранения документов средства защиты.
 type DefenseAssetDocumentModel struct {
+	Revision    string
+	Checksum    *string
+	Status      string
+	Commercial  bool
+	DeletedAt   *time.Time
 	ID          uuid.UUID  `gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
 	AssetID     uuid.UUID  `gorm:"type:uuid;not null;index"`
 	Name        string     `gorm:"not null"`
@@ -105,45 +110,47 @@ func (m *DefenseAssetDocumentModel) toDomain() (*domain.Document, error) {
 		return nil, err
 	}
 
+	doc.SetFileMetadata(m.Status, m.Revision, stringValue(m.Checksum), m.Commercial, m.DeletedAt)
 	return doc, nil
 }
 
 // AssetDataDTO — промежуточная структура для сериализации/десериализации JSONB.
 // Повторяет поля DefenseAsset для JSONB-хранения.
 type AssetDataDTO struct {
-	ID                    string                       `json:"id"`
-	Name                  string                       `json:"name"`
-	ShortName             string                       `json:"shortName,omitempty"`
-	Description           string                       `json:"description,omitempty"`
-	Category              string                       `json:"category"`
-	Roles                 []string                     `json:"roles,omitempty"`
-	PricePerUnitMln       *float64                     `json:"pricePerUnitMln,omitempty"`
-	Currency              string                       `json:"currency,omitempty"`
-	UnitLabel             string                       `json:"unitLabel,omitempty"`
-	CompatibleLayerTypes  []string                     `json:"compatibleLayerTypes,omitempty"`
-	RecommendedLayerCodes []string                     `json:"recommendedLayerCodes,omitempty"`
-	CompatibleLayerCodes  []string                     `json:"compatibleLayerCodes,omitempty"`
-	IncompatibleLayerCodes []string                    `json:"incompatibleLayerCodes,omitempty"`
-	ProtectionType        string                       `json:"protectionType,omitempty"`
-	MinEffectiveDistance  *float64                     `json:"minEffectiveDistance,omitempty"`
-	MaxEffectiveDistance  *float64                     `json:"maxEffectiveDistance,omitempty"`
-	CoverageType          string                       `json:"coverageType"`
-	CoverageRadius        *float64                     `json:"coverageRadius,omitempty"`
-	CoverageAngle         *float64                     `json:"coverageAngle,omitempty"`
-	DeploymentType        string                       `json:"deploymentType,omitempty"`
-	PlacementType         string                       `json:"placementType,omitempty"`
-	IconURL               string                       `json:"iconUrl,omitempty"`
-	ModelURL              string                       `json:"modelUrl,omitempty"`
-	Score                 *int                         `json:"score,omitempty"`
-	Priority              *string                      `json:"priority,omitempty"`
-	CompoundProfile       *compoundProfileDTO              `json:"compoundProfile,omitempty"`
-	WeaponSpec            *domain.WeaponSpecification      `json:"weaponSpec,omitempty"`
-	DetectionSpec         *domain.DetectionSpecification    `json:"detectionSpec,omitempty"`
-	EWSpec                *domain.EWSpecification          `json:"ewSpec,omitempty"`
-	Tags                  []string                         `json:"tags,omitempty"`
-	LegacyItemID          string                       `json:"legacyItemId,omitempty"`
-	CalculatorAssetID     *string                      `json:"calculatorAssetId,omitempty"`
-	MapCatalogGroupIDs    []string                     `json:"mapCatalogGroupIds,omitempty"`
+	catalogMetadataData
+	ID                     string                         `json:"id"`
+	Name                   string                         `json:"name"`
+	ShortName              string                         `json:"shortName,omitempty"`
+	Description            string                         `json:"description,omitempty"`
+	Category               string                         `json:"category"`
+	Roles                  []string                       `json:"roles,omitempty"`
+	PricePerUnitMln        *float64                       `json:"pricePerUnitMln,omitempty"`
+	Currency               string                         `json:"currency,omitempty"`
+	UnitLabel              string                         `json:"unitLabel,omitempty"`
+	CompatibleLayerTypes   []string                       `json:"compatibleLayerTypes,omitempty"`
+	RecommendedLayerCodes  []string                       `json:"recommendedLayerCodes,omitempty"`
+	CompatibleLayerCodes   []string                       `json:"compatibleLayerCodes,omitempty"`
+	IncompatibleLayerCodes []string                       `json:"incompatibleLayerCodes,omitempty"`
+	ProtectionType         string                         `json:"protectionType,omitempty"`
+	MinEffectiveDistance   *float64                       `json:"minEffectiveDistance,omitempty"`
+	MaxEffectiveDistance   *float64                       `json:"maxEffectiveDistance,omitempty"`
+	CoverageType           string                         `json:"coverageType"`
+	CoverageRadius         *float64                       `json:"coverageRadius,omitempty"`
+	CoverageAngle          *float64                       `json:"coverageAngle,omitempty"`
+	DeploymentType         string                         `json:"deploymentType,omitempty"`
+	PlacementType          string                         `json:"placementType,omitempty"`
+	IconURL                string                         `json:"iconUrl,omitempty"`
+	ModelURL               string                         `json:"modelUrl,omitempty"`
+	Score                  *int                           `json:"score,omitempty"`
+	Priority               *string                        `json:"priority,omitempty"`
+	CompoundProfile        *compoundProfileDTO            `json:"compoundProfile,omitempty"`
+	WeaponSpec             *domain.WeaponSpecification    `json:"weaponSpec,omitempty"`
+	DetectionSpec          *domain.DetectionSpecification `json:"detectionSpec,omitempty"`
+	EWSpec                 *domain.EWSpecification        `json:"ewSpec,omitempty"`
+	Tags                   []string                       `json:"tags,omitempty"`
+	LegacyItemID           string                         `json:"legacyItemId,omitempty"`
+	CalculatorAssetID      *string                        `json:"calculatorAssetId,omitempty"`
+	MapCatalogGroupIDs     []string                       `json:"mapCatalogGroupIds,omitempty"`
 }
 
 // ToDomain преобразует GORM-модель в доменный агрегат.
@@ -238,6 +245,9 @@ func (m *DefenseAssetModel) ToDomain() (*domain.DefenseAsset, error) {
 		return nil, fmt.Errorf("invalid asset data in database: %w", err)
 	}
 
+	if err := dto.catalogMetadataData.apply(asset); err != nil {
+		return nil, err
+	}
 	return asset, nil
 }
 
@@ -285,39 +295,40 @@ func ToModel(asset *domain.DefenseAsset) (*DefenseAssetModel, error) {
 
 	cat := string(asset.Category())
 	dto := AssetDataDTO{
-		ID:                    asset.ID(),
-		Name:                  asset.Name(),
-		ShortName:             asset.ShortName(),
-		Description:           asset.Description(),
-		Category:              cat,
-		Roles:                 roles,
-		PricePerUnitMln:       asset.PricePerUnitMln(),
-		Currency:              asset.Currency(),
-		UnitLabel:             asset.UnitLabel(),
-		CompatibleLayerTypes:  layerTypes,
-		RecommendedLayerCodes: asset.RecommendedLayerCodes(),
-		CompatibleLayerCodes:  asset.CompatibleLayerCodes(),
+		catalogMetadataData:    metadataFromAsset(asset),
+		ID:                     asset.ID(),
+		Name:                   asset.Name(),
+		ShortName:              asset.ShortName(),
+		Description:            asset.Description(),
+		Category:               cat,
+		Roles:                  roles,
+		PricePerUnitMln:        asset.PricePerUnitMln(),
+		Currency:               asset.Currency(),
+		UnitLabel:              asset.UnitLabel(),
+		CompatibleLayerTypes:   layerTypes,
+		RecommendedLayerCodes:  asset.RecommendedLayerCodes(),
+		CompatibleLayerCodes:   asset.CompatibleLayerCodes(),
 		IncompatibleLayerCodes: asset.IncompatibleLayerCodes(),
-		ProtectionType:        asset.ProtectionType(),
-		MinEffectiveDistance:  asset.MinEffectiveDistance(),
-		MaxEffectiveDistance:  asset.MaxEffectiveDistance(),
-		CoverageType:          string(asset.CoverageType()),
-		CoverageRadius:        asset.CoverageRadius(),
-		CoverageAngle:         asset.CoverageAngle(),
-		DeploymentType:        string(asset.DeploymentType()),
-		PlacementType:         string(asset.PlacementType()),
-		IconURL:               asset.IconURL(),
-		ModelURL:              asset.ModelURL(),
-		Score:                 asset.Score(),
-		Priority:              priority,
-		CompoundProfile:       compoundProfile,
-		WeaponSpec:            asset.WeaponSpec(),
-		DetectionSpec:         asset.DetectionSpec(),
-		EWSpec:                asset.EWSpec(),
-		Tags:                  asset.Tags(),
-		LegacyItemID:          asset.LegacyItemID(),
-		CalculatorAssetID:     asset.CalculatorAssetID(),
-		MapCatalogGroupIDs:    asset.MapCatalogGroupIDs(),
+		ProtectionType:         asset.ProtectionType(),
+		MinEffectiveDistance:   asset.MinEffectiveDistance(),
+		MaxEffectiveDistance:   asset.MaxEffectiveDistance(),
+		CoverageType:           string(asset.CoverageType()),
+		CoverageRadius:         asset.CoverageRadius(),
+		CoverageAngle:          asset.CoverageAngle(),
+		DeploymentType:         string(asset.DeploymentType()),
+		PlacementType:          string(asset.PlacementType()),
+		IconURL:                asset.IconURL(),
+		ModelURL:               asset.ModelURL(),
+		Score:                  asset.Score(),
+		Priority:               priority,
+		CompoundProfile:        compoundProfile,
+		WeaponSpec:             asset.WeaponSpec(),
+		DetectionSpec:          asset.DetectionSpec(),
+		EWSpec:                 asset.EWSpec(),
+		Tags:                   asset.Tags(),
+		LegacyItemID:           asset.LegacyItemID(),
+		CalculatorAssetID:      asset.CalculatorAssetID(),
+		MapCatalogGroupIDs:     asset.MapCatalogGroupIDs(),
 	}
 
 	assetData, err := json.Marshal(dto)

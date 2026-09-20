@@ -7,16 +7,19 @@ import (
 
 // Document — сущность документа, прикреплённого к карточке средства защиты.
 type Document struct {
-	id          string
-	assetID     string
-	name        string
-	mimeType    string
-	sizeBytes   int64
-	storageKey  string
-	downloadURL string
-	ownerID     *string
-	createdAt   time.Time
-	updatedAt   time.Time
+	status, revision, checksum string
+	commercial                 bool
+	deletedAt                  *time.Time
+	id                         string
+	assetID                    string
+	name                       string
+	mimeType                   string
+	sizeBytes                  int64
+	storageKey                 string
+	downloadURL                string
+	ownerID                    *string
+	createdAt                  time.Time
+	updatedAt                  time.Time
 }
 
 // NewDocument создаёт новый Document с валидацией.
@@ -57,16 +60,16 @@ func NewDocument(
 }
 
 // Getters.
-func (d *Document) ID() string             { return d.id }
-func (d *Document) AssetID() string        { return d.assetID }
-func (d *Document) Name() string           { return d.name }
-func (d *Document) MimeType() string       { return d.mimeType }
-func (d *Document) SizeBytes() int64       { return d.sizeBytes }
-func (d *Document) StorageKey() string     { return d.storageKey }
-func (d *Document) DownloadURL() string    { return d.downloadURL }
-func (d *Document) OwnerID() *string       { return d.ownerID }
-func (d *Document) CreatedAt() time.Time   { return d.createdAt }
-func (d *Document) UpdatedAt() time.Time   { return d.updatedAt }
+func (d *Document) ID() string           { return d.id }
+func (d *Document) AssetID() string      { return d.assetID }
+func (d *Document) Name() string         { return d.name }
+func (d *Document) MimeType() string     { return d.mimeType }
+func (d *Document) SizeBytes() int64     { return d.sizeBytes }
+func (d *Document) StorageKey() string   { return d.storageKey }
+func (d *Document) DownloadURL() string  { return d.downloadURL }
+func (d *Document) OwnerID() *string     { return d.ownerID }
+func (d *Document) CreatedAt() time.Time { return d.createdAt }
+func (d *Document) UpdatedAt() time.Time { return d.updatedAt }
 
 // SetDownloadURL обновляет download URL документа.
 func (d *Document) SetDownloadURL(url string) {
@@ -87,4 +90,27 @@ func (d *Document) UpdateName(name string) error {
 	d.name = name
 	d.updatedAt = time.Now().UTC()
 	return nil
+}
+
+func (d *Document) Status() string {
+	if d.status == "" {
+		return "legacy_unavailable"
+	}
+	return d.status
+}
+func (d *Document) Revision() string {
+	if d.revision == "" {
+		return "1"
+	}
+	return d.revision
+}
+func (d *Document) Checksum() string      { return d.checksum }
+func (d *Document) Commercial() bool      { return d.commercial }
+func (d *Document) DeletedAt() *time.Time { return d.deletedAt }
+func (d *Document) SetFileMetadata(status, revision, checksum string, commercial bool, deleted *time.Time) {
+	d.status = status
+	d.revision = revision
+	d.checksum = checksum
+	d.commercial = commercial
+	d.deletedAt = deleted
 }

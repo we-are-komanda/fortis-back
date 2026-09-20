@@ -122,7 +122,7 @@ func (c *DefenseAssetController) List(ctx *fasthttp.RequestCtx) {
 //
 // Responses:
 //
-//	200: DefenseAssetDTO
+//	200: DefenseAssetResponse
 //	400: description: Bad Request — не указан ID
 //	404: description: Not Found — средство защиты не найдено
 //	500: description: Internal Server Error
@@ -139,6 +139,8 @@ func (c *DefenseAssetController) Get(ctx *fasthttp.RequestCtx) {
 			return
 		}
 		switch {
+		case errors.Is(err, domain.ErrInvalidCatalogMetadata), errors.Is(err, domain.ErrDefenseAssetInvalidSpecification), errors.Is(err, domain.ErrDefenseAssetInvalidDeploymentType), errors.Is(err, domain.ErrDefenseAssetInvalidPlacementType):
+			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		case errors.Is(err, domain.ErrDefenseAssetNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "defense asset not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
 		default:
@@ -170,7 +172,7 @@ func (c *DefenseAssetController) Get(ctx *fasthttp.RequestCtx) {
 //
 // Responses:
 //
-//	201: DefenseAssetDTO
+//	201: DefenseAssetResponse
 //	400: description: Bad Request — неверные данные
 //	500: description: Internal Server Error
 func (c *DefenseAssetController) Create(ctx *fasthttp.RequestCtx) {
@@ -200,6 +202,8 @@ func (c *DefenseAssetController) Create(ctx *fasthttp.RequestCtx) {
 			return
 		}
 		switch {
+		case errors.Is(err, domain.ErrInvalidCatalogMetadata), errors.Is(err, domain.ErrDefenseAssetInvalidSpecification), errors.Is(err, domain.ErrDefenseAssetInvalidDeploymentType), errors.Is(err, domain.ErrDefenseAssetInvalidPlacementType):
+			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		case errors.Is(err, domain.ErrDefenseAssetInvalidName):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		case errors.Is(err, domain.ErrDefenseAssetInvalidCategory):
@@ -236,7 +240,7 @@ func (c *DefenseAssetController) Create(ctx *fasthttp.RequestCtx) {
 //
 // Responses:
 //
-//	200: DefenseAssetDTO
+//	200: DefenseAssetResponse
 //	400: description: Bad Request — неверные параметры
 //	404: description: Not Found — средство защиты не найдено
 //	500: description: Internal Server Error
@@ -260,6 +264,8 @@ func (c *DefenseAssetController) Update(ctx *fasthttp.RequestCtx) {
 			return
 		}
 		switch {
+		case errors.Is(err, domain.ErrInvalidCatalogMetadata), errors.Is(err, domain.ErrDefenseAssetInvalidSpecification), errors.Is(err, domain.ErrDefenseAssetInvalidDeploymentType), errors.Is(err, domain.ErrDefenseAssetInvalidPlacementType):
+			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		case errors.Is(err, domain.ErrDefenseAssetNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "defense asset not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
 		case errors.Is(err, domain.ErrDefenseAssetInvalidName):
@@ -308,6 +314,8 @@ func (c *DefenseAssetController) Delete(ctx *fasthttp.RequestCtx) {
 			return
 		}
 		switch {
+		case errors.Is(err, domain.ErrInvalidCatalogMetadata), errors.Is(err, domain.ErrDefenseAssetInvalidSpecification), errors.Is(err, domain.ErrDefenseAssetInvalidDeploymentType), errors.Is(err, domain.ErrDefenseAssetInvalidPlacementType):
+			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		case errors.Is(err, domain.ErrDefenseAssetNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "defense asset not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
 		default:

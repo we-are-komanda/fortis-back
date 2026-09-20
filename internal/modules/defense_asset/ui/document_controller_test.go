@@ -5,6 +5,7 @@ package ui
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,39 +48,17 @@ func testDocument(id, assetID, name string) *domain.Document {
 	return doc
 }
 
-func TestDocumentCreate_Success(t *testing.T) {
-	svc := &mockDocumentService{
-		createFn: func(ctx context.Context, input application.CreateDocumentInput) (*domain.Document, error) {
-			return testDocument("doc-123", input.AssetID, input.Name), nil
-		},
-	}
-
-	controller := NewDocumentController(svc)
-
-	body := `{"assetId":"asset-123","name":"doc.pdf","storageKey":"storage/key/doc.pdf"}`
-	req := fasthttp.AcquireRequest()
-	req.SetBody([]byte(body))
-	req.Header.SetContentType("application/json")
-
+func TestDocumentCreate_MetadataRejected(t *testing.T) {
+	svc := &mockDocumentService{createFn: func(ctx context.Context, in application.CreateDocumentInput) (*domain.Document, error) {
+		return testDocument("doc", in.AssetID, in.Name), nil
+	}}
+	c := NewDocumentController(svc)
 	var ctx fasthttp.RequestCtx
-	ctx.Init(req, nil, nil)
-
-	controller.Create(&ctx)
-
-	if ctx.Response.StatusCode() != fasthttp.StatusCreated {
-		t.Errorf("expected status %d, got %d", fasthttp.StatusCreated, ctx.Response.StatusCode())
-	}
-
-	var resp AssetDocumentDTO
-	if err := json.Unmarshal(ctx.Response.Body(), &resp); err != nil {
-		t.Fatalf("failed to unmarshal response: %v", err)
-	}
-
-	if resp.Name != "doc.pdf" {
-		t.Errorf("expected name 'doc.pdf', got %q", resp.Name)
-	}
-	if resp.AssetID != "asset-123" {
-		t.Errorf("expected assetId 'asset-123', got %q", resp.AssetID)
+	ctx.Request.Header.SetContentType("application/json")
+	ctx.Request.SetBodyString(`{"assetId":"asset","name":"source.txt","storageKey":"untrusted","downloadUrl":"https://example.test/public"}`)
+	c.Create(&ctx)
+	if ctx.Response.StatusCode() != 400 || !strings.Contains(string(ctx.Response.Body()), "document_upload_required") {
+		t.Fatalf("%d %s", ctx.Response.StatusCode(), ctx.Response.Body())
 	}
 }
 
@@ -273,36 +252,13 @@ func TestDocumentGet_MissingID(t *testing.T) {
 	}
 }
 
-func TestDocumentDownload_Success(t *testing.T) {
-	svc := &mockDocumentService{
-		getByIDFn: func(ctx context.Context, id string) (*domain.Document, error) {
-			doc := testDocument(id, "asset-123", "doc.pdf")
-			doc.SetDownloadURL("https://storage.example.com/documents/doc.pdf")
-			return doc, nil
-		},
-	}
-
-	controller := NewDocumentController(svc)
-
-	req := fasthttp.AcquireRequest()
-	req.URI().SetQueryString("id=doc-123")
-
+func TestDocumentDownload_NoPipelineClosed(t *testing.T) {
+	c := NewDocumentController(&mockDocumentService{})
 	var ctx fasthttp.RequestCtx
-	ctx.Init(req, nil, nil)
-
-	controller.Download(&ctx)
-
-	if ctx.Response.StatusCode() != fasthttp.StatusOK {
-		t.Errorf("expected status %d, got %d", fasthttp.StatusOK, ctx.Response.StatusCode())
-	}
-
-	var resp AssetDocumentDTO
-	if err := json.Unmarshal(ctx.Response.Body(), &resp); err != nil {
-		t.Fatalf("failed to unmarshal response: %v", err)
-	}
-
-	if resp.DownloadURL != "https://storage.example.com/documents/doc.pdf" {
-		t.Errorf("expected downloadUrl to be set, got %q", resp.DownloadURL)
+	ctx.QueryArgs().Set("id", "doc")
+	c.Download(&ctx)
+	if ctx.Response.StatusCode() != 503 {
+		t.Fatalf("expected unavailable, got %d", ctx.Response.StatusCode())
 	}
 }
 

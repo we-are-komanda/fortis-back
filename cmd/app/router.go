@@ -5,6 +5,7 @@ import (
 	budgetUi "github.com/fortis/backend/internal/modules/budget/ui"
 	defenseAssetUi "github.com/fortis/backend/internal/modules/defense_asset/ui"
 	defenseUi "github.com/fortis/backend/internal/modules/defense_project/ui"
+	demoUi "github.com/fortis/backend/internal/modules/demo_request/ui"
 	enterpriseUi "github.com/fortis/backend/internal/modules/enterprise/ui"
 	"github.com/fortis/backend/internal/modules/platform/ui"
 	reportUi "github.com/fortis/backend/internal/modules/report/ui"
@@ -16,6 +17,7 @@ func (app *Application) registerHandlers(r *router.Router) error {
 	err := app.container.Invoke(
 		func(
 			exampleController *ui.ExampleController,
+			demoController *demoUi.Controller,
 			defenseProjectController *defenseUi.DefenseProjectController,
 			enterpriseController *enterpriseUi.EnterpriseController,
 			defenseAssetController *defenseAssetUi.DefenseAssetController,
@@ -25,6 +27,7 @@ func (app *Application) registerHandlers(r *router.Router) error {
 			userController *userUi.UserController,
 		) {
 			r.GET("/api/v1/example", exampleController.Get)
+			r.POST("/api/v1/demo-requests", demoController.Submit)
 			r.POST("/api/v1/projects/import", defenseProjectController.Import)
 			r.GET("/api/v1/projects/export", defenseProjectController.Export)
 			r.POST("/api/v1/projects", defenseProjectController.Create)

@@ -21,3 +21,10 @@ var (
 
 // ErrProjectOwnershipImmutable prevents an ordinary update from transferring a project.
 var ErrProjectOwnershipImmutable = errors.New("project enterprise cannot be changed")
+
+var (
+	ErrVersionRequired       = errors.New("expected positive project version is required")
+	ErrRevisionNotFound      = errors.New("project revision not found")
+	ErrIdempotencyConflict   = errors.New("idempotency key already used with different payload")
+	ErrInvalidIdempotencyKey = errors.New("invalid idempotency key")
+)

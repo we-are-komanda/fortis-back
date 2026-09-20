@@ -25,8 +25,8 @@ func NewCoordinates(lat, lng float64, altitude ...float64) Coordinates {
 	return c
 }
 
-func (c Coordinates) Lat() float64      { return c.lat }
-func (c Coordinates) Lng() float64      { return c.lng }
+func (c Coordinates) Lat() float64       { return c.lat }
+func (c Coordinates) Lng() float64       { return c.lng }
 func (c Coordinates) Altitude() *float64 { return c.altitude }
 
 // ProtectedObject — value object защищаемого объекта.
@@ -40,8 +40,8 @@ func NewProtectedObject(id, name string, center Coordinates) ProtectedObject {
 	return ProtectedObject{id: id, name: name, center: center}
 }
 
-func (p ProtectedObject) ID() string        { return p.id }
-func (p ProtectedObject) Name() string      { return p.name }
+func (p ProtectedObject) ID() string          { return p.id }
+func (p ProtectedObject) Name() string        { return p.name }
 func (p ProtectedObject) Center() Coordinates { return p.center }
 
 // LayerGeometryType — тип геометрии слоя.
@@ -97,29 +97,29 @@ func NewFreeformGeometry(points []Coordinates) LayerGeometry {
 	}
 }
 
-func (g LayerGeometry) Type() LayerGeometryType  { return g.geometryType }
-func (g LayerGeometry) Center() *Coordinates      { return g.center }
-func (g LayerGeometry) RadiusM() *float64         { return g.radiusM }
-func (g LayerGeometry) MinRadiusM() *float64      { return g.minRadiusM }
-func (g LayerGeometry) MaxRadiusM() *float64      { return g.maxRadiusM }
-func (g LayerGeometry) Points() []Coordinates     { return g.points }
+func (g LayerGeometry) Type() LayerGeometryType { return g.geometryType }
+func (g LayerGeometry) Center() *Coordinates    { return g.center }
+func (g LayerGeometry) RadiusM() *float64       { return g.radiusM }
+func (g LayerGeometry) MinRadiusM() *float64    { return g.minRadiusM }
+func (g LayerGeometry) MaxRadiusM() *float64    { return g.maxRadiusM }
+func (g LayerGeometry) Points() []Coordinates   { return g.points }
 
 // EditableDefenseLayer — value object редактируемого слоя (эшелона) защиты.
 type EditableDefenseLayer struct {
-	id               string
-	name             string
-	code             string
-	description      *string
-	order            int
+	id                 string
+	name               string
+	code               string
+	description        *string
+	order              int
 	distanceFromObjMin *float64
 	distanceFromObjMax *float64
-	geometryType     LayerGeometryType
-	geometry         LayerGeometry
-	color            *string
-	opacity          *float64
-	isActive         bool
-	isVisible        bool
-	isLocked         bool
+	geometryType       LayerGeometryType
+	geometry           LayerGeometry
+	color              *string
+	opacity            *float64
+	isActive           bool
+	isVisible          bool
+	isLocked           bool
 }
 
 func NewEditableDefenseLayer(
@@ -149,38 +149,38 @@ func NewEditableDefenseLayer(
 	}
 }
 
-func (l EditableDefenseLayer) ID() string                { return l.id }
-func (l EditableDefenseLayer) Name() string              { return l.name }
-func (l EditableDefenseLayer) Code() string              { return l.code }
-func (l EditableDefenseLayer) Description() *string      { return l.description }
-func (l EditableDefenseLayer) Order() int                { return l.order }
+func (l EditableDefenseLayer) ID() string                      { return l.id }
+func (l EditableDefenseLayer) Name() string                    { return l.name }
+func (l EditableDefenseLayer) Code() string                    { return l.code }
+func (l EditableDefenseLayer) Description() *string            { return l.description }
+func (l EditableDefenseLayer) Order() int                      { return l.order }
 func (l EditableDefenseLayer) DistanceFromObjectMin() *float64 { return l.distanceFromObjMin }
 func (l EditableDefenseLayer) DistanceFromObjectMax() *float64 { return l.distanceFromObjMax }
-func (l EditableDefenseLayer) GeometryType() LayerGeometryType  { return l.geometryType }
-func (l EditableDefenseLayer) Geometry() LayerGeometry          { return l.geometry }
-func (l EditableDefenseLayer) Color() *string           { return l.color }
-func (l EditableDefenseLayer) Opacity() *float64        { return l.opacity }
-func (l EditableDefenseLayer) IsActive() bool           { return l.isActive }
-func (l EditableDefenseLayer) IsVisible() bool          { return l.isVisible }
-func (l EditableDefenseLayer) IsLocked() bool           { return l.isLocked }
+func (l EditableDefenseLayer) GeometryType() LayerGeometryType { return l.geometryType }
+func (l EditableDefenseLayer) Geometry() LayerGeometry         { return l.geometry }
+func (l EditableDefenseLayer) Color() *string                  { return l.color }
+func (l EditableDefenseLayer) Opacity() *float64               { return l.opacity }
+func (l EditableDefenseLayer) IsActive() bool                  { return l.isActive }
+func (l EditableDefenseLayer) IsVisible() bool                 { return l.isVisible }
+func (l EditableDefenseLayer) IsLocked() bool                  { return l.isLocked }
 
 // DefenseAssetCategory — категория средства защиты.
 type DefenseAssetCategory string
 
 const (
-	DefenseAssetCategoryEarlyWarning        DefenseAssetCategory = "early-warning"
-	DefenseAssetCategoryDetection           DefenseAssetCategory = "detection"
-	DefenseAssetCategoryClassification      DefenseAssetCategory = "classification"
-	DefenseAssetCategoryJamming             DefenseAssetCategory = "jamming"
-	DefenseAssetCategorySpoofing            DefenseAssetCategory = "spoofing"
-	DefenseAssetCategoryKinetic             DefenseAssetCategory = "kinetic"
-	DefenseAssetCategoryInterceptor        DefenseAssetCategory = "interceptor"
-	DefenseAssetCategoryPassiveProtection   DefenseAssetCategory = "passive-protection"
+	DefenseAssetCategoryEarlyWarning          DefenseAssetCategory = "early-warning"
+	DefenseAssetCategoryDetection             DefenseAssetCategory = "detection"
+	DefenseAssetCategoryClassification        DefenseAssetCategory = "classification"
+	DefenseAssetCategoryJamming               DefenseAssetCategory = "jamming"
+	DefenseAssetCategorySpoofing              DefenseAssetCategory = "spoofing"
+	DefenseAssetCategoryKinetic               DefenseAssetCategory = "kinetic"
+	DefenseAssetCategoryInterceptor           DefenseAssetCategory = "interceptor"
+	DefenseAssetCategoryPassiveProtection     DefenseAssetCategory = "passive-protection"
 	DefenseAssetCategoryEngineeringProtection DefenseAssetCategory = "engineering-protection"
-	DefenseAssetCategoryInfrastructure      DefenseAssetCategory = "infrastructure"
-	DefenseAssetCategorySoftware            DefenseAssetCategory = "software"
-	DefenseAssetCategoryCommandCenter       DefenseAssetCategory = "command-center"
-	DefenseAssetCategoryExternalService     DefenseAssetCategory = "external-service"
+	DefenseAssetCategoryInfrastructure        DefenseAssetCategory = "infrastructure"
+	DefenseAssetCategorySoftware              DefenseAssetCategory = "software"
+	DefenseAssetCategoryCommandCenter         DefenseAssetCategory = "command-center"
+	DefenseAssetCategoryExternalService       DefenseAssetCategory = "external-service"
 )
 
 // DefenseAssetRole — роль средства защиты.
@@ -225,52 +225,52 @@ const (
 type DefenseAssetPlacementType string
 
 const (
-	DefenseAssetPlacementMapObject    DefenseAssetPlacementType = "map-object"
-	DefenseAssetPlacementZoneObject   DefenseAssetPlacementType = "zone-object"
-	DefenseAssetPlacementNonPhysical  DefenseAssetPlacementType = "non-physical"
+	DefenseAssetPlacementMapObject   DefenseAssetPlacementType = "map-object"
+	DefenseAssetPlacementZoneObject  DefenseAssetPlacementType = "zone-object"
+	DefenseAssetPlacementNonPhysical DefenseAssetPlacementType = "non-physical"
 )
 
 // DefensePriority — приоритет средства защиты.
 type DefensePriority string
 
 const (
-	DefensePriorityPrimary   DefensePriority = "primary"
-	DefensePriorityMedium    DefensePriority = "medium"
-	DefensePriorityLow       DefensePriority = "low"
+	DefensePriorityPrimary DefensePriority = "primary"
+	DefensePriorityMedium  DefensePriority = "medium"
+	DefensePriorityLow     DefensePriority = "low"
 )
 
 // DefenseAsset — value object средства защиты.
 type DefenseAsset struct {
-	id                   string
-	name                 string
-	shortName            *string
-	description          *string
-	category             DefenseAssetCategory
-	roles                []DefenseAssetRole
-	pricePerUnitMln      *float64
-	currency             string
-	unitLabel            string
-	compatibleLayerTypes []LayerGeometryType
-	recommendedLayerCodes []string
-	compatibleLayerCodes  []string
+	id                     string
+	name                   string
+	shortName              *string
+	description            *string
+	category               DefenseAssetCategory
+	roles                  []DefenseAssetRole
+	pricePerUnitMln        *float64
+	currency               string
+	unitLabel              string
+	compatibleLayerTypes   []LayerGeometryType
+	recommendedLayerCodes  []string
+	compatibleLayerCodes   []string
 	incompatibleLayerCodes []string
-	protectionType        string
-	minEffectiveDistance  *float64
-	maxEffectiveDistance  *float64
-	coverageType          DefenseAssetCoverageType
-	coverageRadius        *float64
-	coverageAngle         *float64
-	deploymentType        DefenseAssetDeploymentType
-	placementType         DefenseAssetPlacementType
-	iconURL               *string
-	modelURL              *string
-	score                 *int
-	priority              *DefensePriority
-	compoundProfile       *defenseAssetDomain.DefenseAssetCompoundProfile
-	tags                  []string
-	legacyItemID          *string
-	calculatorAssetID     *string
-	mapCatalogGroupIDs    []string
+	protectionType         string
+	minEffectiveDistance   *float64
+	maxEffectiveDistance   *float64
+	coverageType           DefenseAssetCoverageType
+	coverageRadius         *float64
+	coverageAngle          *float64
+	deploymentType         DefenseAssetDeploymentType
+	placementType          DefenseAssetPlacementType
+	iconURL                *string
+	modelURL               *string
+	score                  *int
+	priority               *DefensePriority
+	compoundProfile        *defenseAssetDomain.DefenseAssetCompoundProfile
+	tags                   []string
+	legacyItemID           *string
+	calculatorAssetID      *string
+	mapCatalogGroupIDs     []string
 }
 
 func NewDefenseAsset(
@@ -301,7 +301,7 @@ func NewDefenseAsset(
 		shortName: shortName, description: description,
 		category: category, roles: roles,
 		pricePerUnitMln: pricePerUnitMln,
-		currency: currency, unitLabel: unitLabel,
+		currency:        currency, unitLabel: unitLabel,
 		compatibleLayerTypes:   compatibleLayerTypes,
 		recommendedLayerCodes:  recommendedLayerCodes,
 		compatibleLayerCodes:   compatibleLayerCodes,
@@ -314,46 +314,48 @@ func NewDefenseAsset(
 		coverageAngle:          coverageAngle,
 		deploymentType:         deploymentType,
 		placementType:          placementType,
-		iconURL: iconURL, modelURL: modelURL,
+		iconURL:                iconURL, modelURL: modelURL,
 		score: score, priority: priority,
 		compoundProfile: compoundProfile,
-		tags: tags,
-		legacyItemID: legacyItemID, calculatorAssetID: calculatorAssetID,
+		tags:            tags,
+		legacyItemID:    legacyItemID, calculatorAssetID: calculatorAssetID,
 		mapCatalogGroupIDs: mapCatalogGroupIDs,
 	}
 }
 
 // Getters for DefenseAsset.
-func (a DefenseAsset) ID() string                        { return a.id }
-func (a DefenseAsset) Name() string                      { return a.name }
-func (a DefenseAsset) ShortName() *string                { return a.shortName }
-func (a DefenseAsset) Description() *string              { return a.description }
-func (a DefenseAsset) Category() DefenseAssetCategory     { return a.category }
-func (a DefenseAsset) Roles() []DefenseAssetRole          { return a.roles }
-func (a DefenseAsset) PricePerUnitMln() *float64         { return a.pricePerUnitMln }
-func (a DefenseAsset) Currency() string                  { return a.currency }
-func (a DefenseAsset) UnitLabel() string                 { return a.unitLabel }
-func (a DefenseAsset) CompatibleLayerTypes() []LayerGeometryType { return a.compatibleLayerTypes }
-func (a DefenseAsset) RecommendedLayerCodes() []string   { return a.recommendedLayerCodes }
-func (a DefenseAsset) CompatibleLayerCodes() []string    { return a.compatibleLayerCodes }
-func (a DefenseAsset) IncompatibleLayerCodes() []string  { return a.incompatibleLayerCodes }
-func (a DefenseAsset) ProtectionType() string            { return a.protectionType }
-func (a DefenseAsset) MinEffectiveDistance() *float64    { return a.minEffectiveDistance }
-func (a DefenseAsset) MaxEffectiveDistance() *float64    { return a.maxEffectiveDistance }
-func (a DefenseAsset) CoverageType() DefenseAssetCoverageType  { return a.coverageType }
-func (a DefenseAsset) CoverageRadius() *float64          { return a.coverageRadius }
-func (a DefenseAsset) CoverageAngle() *float64           { return a.coverageAngle }
+func (a DefenseAsset) ID() string                                 { return a.id }
+func (a DefenseAsset) Name() string                               { return a.name }
+func (a DefenseAsset) ShortName() *string                         { return a.shortName }
+func (a DefenseAsset) Description() *string                       { return a.description }
+func (a DefenseAsset) Category() DefenseAssetCategory             { return a.category }
+func (a DefenseAsset) Roles() []DefenseAssetRole                  { return a.roles }
+func (a DefenseAsset) PricePerUnitMln() *float64                  { return a.pricePerUnitMln }
+func (a DefenseAsset) Currency() string                           { return a.currency }
+func (a DefenseAsset) UnitLabel() string                          { return a.unitLabel }
+func (a DefenseAsset) CompatibleLayerTypes() []LayerGeometryType  { return a.compatibleLayerTypes }
+func (a DefenseAsset) RecommendedLayerCodes() []string            { return a.recommendedLayerCodes }
+func (a DefenseAsset) CompatibleLayerCodes() []string             { return a.compatibleLayerCodes }
+func (a DefenseAsset) IncompatibleLayerCodes() []string           { return a.incompatibleLayerCodes }
+func (a DefenseAsset) ProtectionType() string                     { return a.protectionType }
+func (a DefenseAsset) MinEffectiveDistance() *float64             { return a.minEffectiveDistance }
+func (a DefenseAsset) MaxEffectiveDistance() *float64             { return a.maxEffectiveDistance }
+func (a DefenseAsset) CoverageType() DefenseAssetCoverageType     { return a.coverageType }
+func (a DefenseAsset) CoverageRadius() *float64                   { return a.coverageRadius }
+func (a DefenseAsset) CoverageAngle() *float64                    { return a.coverageAngle }
 func (a DefenseAsset) DeploymentType() DefenseAssetDeploymentType { return a.deploymentType }
-func (a DefenseAsset) PlacementType() DefenseAssetPlacementType  { return a.placementType }
-func (a DefenseAsset) IconURL() *string                  { return a.iconURL }
-func (a DefenseAsset) ModelURL() *string                 { return a.modelURL }
-func (a DefenseAsset) Score() *int                       { return a.score }
-func (a DefenseAsset) Priority() *DefensePriority        { return a.priority }
-func (a DefenseAsset) CompoundProfile() *defenseAssetDomain.DefenseAssetCompoundProfile { return a.compoundProfile }
-func (a DefenseAsset) Tags() []string                    { return a.tags }
-func (a DefenseAsset) LegacyItemID() *string             { return a.legacyItemID }
-func (a DefenseAsset) CalculatorAssetID() *string        { return a.calculatorAssetID }
-func (a DefenseAsset) MapCatalogGroupIDs() []string      { return a.mapCatalogGroupIDs }
+func (a DefenseAsset) PlacementType() DefenseAssetPlacementType   { return a.placementType }
+func (a DefenseAsset) IconURL() *string                           { return a.iconURL }
+func (a DefenseAsset) ModelURL() *string                          { return a.modelURL }
+func (a DefenseAsset) Score() *int                                { return a.score }
+func (a DefenseAsset) Priority() *DefensePriority                 { return a.priority }
+func (a DefenseAsset) CompoundProfile() *defenseAssetDomain.DefenseAssetCompoundProfile {
+	return a.compoundProfile
+}
+func (a DefenseAsset) Tags() []string               { return a.tags }
+func (a DefenseAsset) LegacyItemID() *string        { return a.legacyItemID }
+func (a DefenseAsset) CalculatorAssetID() *string   { return a.calculatorAssetID }
+func (a DefenseAsset) MapCatalogGroupIDs() []string { return a.mapCatalogGroupIDs }
 
 // PlacedObjectStatus — статус размещённого объекта.
 type PlacedObjectStatus string
@@ -367,24 +369,24 @@ const (
 
 // PlacedDefenseObject — value object размещённого объекта средства защиты.
 type PlacedDefenseObject struct {
-	id                  string
-	assetID             string
-	layerID             string
-	name                *string
-	coordinates         Coordinates
-	rotation            *float64
-	scale               *float64
-	quantity            int
-	status              PlacedObjectStatus
+	id                    string
+	assetID               string
+	layerID               string
+	name                  *string
+	coordinates           Coordinates
+	rotation              *float64
+	scale                 *float64
+	quantity              int
+	status                PlacedObjectStatus
 	customPricePerUnitMln *float64
 	customCoverageRadius  *float64
 	customCoverageAngle   *float64
 	hasGeometryConflict   bool
 	hasCoverageConflict   bool
 	hasTerrainConflict    bool
-	notes               *string
-	createdAt           time.Time
-	updatedAt           time.Time
+	notes                 *string
+	createdAt             time.Time
+	updatedAt             time.Time
 }
 
 func NewPlacedDefenseObject(
@@ -410,28 +412,28 @@ func NewPlacedDefenseObject(
 		hasGeometryConflict:   hasGeometryConflict,
 		hasCoverageConflict:   hasCoverageConflict,
 		hasTerrainConflict:    hasTerrainConflict,
-		notes: notes,
-		createdAt: createdAt, updatedAt: updatedAt,
+		notes:                 notes,
+		createdAt:             createdAt, updatedAt: updatedAt,
 	}
 }
 
 // Getters for PlacedDefenseObject.
-func (o PlacedDefenseObject) ID() string                     { return o.id }
-func (o PlacedDefenseObject) AssetID() string                { return o.assetID }
-func (o PlacedDefenseObject) LayerID() string                { return o.layerID }
-func (o PlacedDefenseObject) Name() *string                  { return o.name }
+func (o PlacedDefenseObject) ID() string                      { return o.id }
+func (o PlacedDefenseObject) AssetID() string                 { return o.assetID }
+func (o PlacedDefenseObject) LayerID() string                 { return o.layerID }
+func (o PlacedDefenseObject) Name() *string                   { return o.name }
 func (o PlacedDefenseObject) Coordinates() Coordinates        { return o.coordinates }
-func (o PlacedDefenseObject) Rotation() *float64             { return o.rotation }
-func (o PlacedDefenseObject) Scale() *float64                { return o.scale }
-func (o PlacedDefenseObject) Quantity() int                  { return o.quantity }
-func (o PlacedDefenseObject) Status() PlacedObjectStatus     { return o.status }
+func (o PlacedDefenseObject) Rotation() *float64              { return o.rotation }
+func (o PlacedDefenseObject) Scale() *float64                 { return o.scale }
+func (o PlacedDefenseObject) Quantity() int                   { return o.quantity }
+func (o PlacedDefenseObject) Status() PlacedObjectStatus      { return o.status }
 func (o PlacedDefenseObject) CustomPricePerUnitMln() *float64 { return o.customPricePerUnitMln }
-func (o PlacedDefenseObject) CustomCoverageRadius() *float64 { return o.customCoverageRadius }
-func (o PlacedDefenseObject) CustomCoverageAngle() *float64  { return o.customCoverageAngle }
-func (o PlacedDefenseObject) HasGeometryConflict() bool      { return o.hasGeometryConflict }
-func (o PlacedDefenseObject) HasCoverageConflict() bool      { return o.hasCoverageConflict }
-func (o PlacedDefenseObject) HasTerrainConflict() bool       { return o.hasTerrainConflict }
-func (o PlacedDefenseObject) Notes() *string                 { return o.notes }
+func (o PlacedDefenseObject) CustomCoverageRadius() *float64  { return o.customCoverageRadius }
+func (o PlacedDefenseObject) CustomCoverageAngle() *float64   { return o.customCoverageAngle }
+func (o PlacedDefenseObject) HasGeometryConflict() bool       { return o.hasGeometryConflict }
+func (o PlacedDefenseObject) HasCoverageConflict() bool       { return o.hasCoverageConflict }
+func (o PlacedDefenseObject) HasTerrainConflict() bool        { return o.hasTerrainConflict }
+func (o PlacedDefenseObject) Notes() *string                  { return o.notes }
 func (o PlacedDefenseObject) CreatedAt() time.Time            { return o.createdAt }
 func (o PlacedDefenseObject) UpdatedAt() time.Time            { return o.updatedAt }
 
@@ -450,30 +452,35 @@ const (
 type DefenseProjectSource string
 
 const (
-	DefenseProjectSourceCustom         DefenseProjectSource = "custom"
-	DefenseProjectSourcePreset         DefenseProjectSource = "preset"
+	DefenseProjectSourceCustom          DefenseProjectSource = "custom"
+	DefenseProjectSourcePreset          DefenseProjectSource = "preset"
 	DefenseProjectSourceLegacyMigration DefenseProjectSource = "legacy-migration"
 )
 
 // DefenseProject — aggregate корень для проекта защиты.
 type DefenseProject struct {
-	schemaVersion   int
-	projectID       string
-	name            string
-	enterpriseID    string
-	projectName     string
-	baseObject      ProtectedObject
-	layers          []EditableDefenseLayer
-	assetLibrary    []DefenseAsset
-	placedObjects   []PlacedDefenseObject
-	activeLayerID   *string
-	selectedAssetID  *string
-	selectedObjectID *string
-	mode            DefenseProjectMode
-	source          DefenseProjectSource
-	basePresetID    *string
-	version         int
-	updatedAt       time.Time
+	// document preserves safe, uninterpreted extension data; it is never an authority for access or calculations.
+	document               string
+	snapshot               string
+	snapshotDigest         string
+	costCalculationVersion string
+	schemaVersion          int
+	projectID              string
+	name                   string
+	enterpriseID           string
+	projectName            string
+	baseObject             ProtectedObject
+	layers                 []EditableDefenseLayer
+	assetLibrary           []DefenseAsset
+	placedObjects          []PlacedDefenseObject
+	activeLayerID          *string
+	selectedAssetID        *string
+	selectedObjectID       *string
+	mode                   DefenseProjectMode
+	source                 DefenseProjectSource
+	basePresetID           *string
+	version                int
+	updatedAt              time.Time
 }
 
 // NewDefenseProject создаёт новый DefenseProject с валидацией.
@@ -527,23 +534,33 @@ func NewDefenseProject(
 }
 
 // Getters for DefenseProject.
-func (p *DefenseProject) SchemaVersion() int                       { return p.schemaVersion }
-func (p *DefenseProject) ProjectID() string                       { return p.projectID }
-func (p *DefenseProject) Name() string                            { return p.name }
-func (p *DefenseProject) EnterpriseID() string                    { return p.enterpriseID }
-func (p *DefenseProject) ProjectName() string                     { return p.projectName }
-func (p *DefenseProject) BaseObject() ProtectedObject              { return p.baseObject }
-func (p *DefenseProject) Layers() []EditableDefenseLayer           { return p.layers }
-func (p *DefenseProject) AssetLibrary() []DefenseAsset            { return p.assetLibrary }
-func (p *DefenseProject) PlacedObjects() []PlacedDefenseObject    { return p.placedObjects }
-func (p *DefenseProject) ActiveLayerID() *string                  { return p.activeLayerID }
-func (p *DefenseProject) SelectedAssetID() *string                { return p.selectedAssetID }
-func (p *DefenseProject) SelectedObjectID() *string               { return p.selectedObjectID }
-func (p *DefenseProject) Mode() DefenseProjectMode                { return p.mode }
-func (p *DefenseProject) Source() DefenseProjectSource            { return p.source }
-func (p *DefenseProject) BasePresetID() *string                   { return p.basePresetID }
-func (p *DefenseProject) Version() int                            { return p.version }
-func (p *DefenseProject) UpdatedAt() time.Time                    { return p.updatedAt }
+func (p *DefenseProject) SchemaVersion() int                   { return p.schemaVersion }
+func (p *DefenseProject) ProjectID() string                    { return p.projectID }
+func (p *DefenseProject) Name() string                         { return p.name }
+func (p *DefenseProject) EnterpriseID() string                 { return p.enterpriseID }
+func (p *DefenseProject) ProjectName() string                  { return p.projectName }
+func (p *DefenseProject) BaseObject() ProtectedObject          { return p.baseObject }
+func (p *DefenseProject) Layers() []EditableDefenseLayer       { return p.layers }
+func (p *DefenseProject) AssetLibrary() []DefenseAsset         { return p.assetLibrary }
+func (p *DefenseProject) PlacedObjects() []PlacedDefenseObject { return p.placedObjects }
+func (p *DefenseProject) ActiveLayerID() *string               { return p.activeLayerID }
+func (p *DefenseProject) SelectedAssetID() *string             { return p.selectedAssetID }
+func (p *DefenseProject) SelectedObjectID() *string            { return p.selectedObjectID }
+func (p *DefenseProject) Mode() DefenseProjectMode             { return p.mode }
+func (p *DefenseProject) Source() DefenseProjectSource         { return p.source }
+func (p *DefenseProject) BasePresetID() *string                { return p.basePresetID }
+func (p *DefenseProject) Version() int                         { return p.version }
+func (p *DefenseProject) UpdatedAt() time.Time                 { return p.updatedAt }
+
+func (p *DefenseProject) Document() string               { return p.document }
+func (p *DefenseProject) SetDocument(raw string)         { p.document = raw }
+func (p *DefenseProject) Snapshot() string               { return p.snapshot }
+func (p *DefenseProject) SnapshotDigest() string         { return p.snapshotDigest }
+func (p *DefenseProject) SetSnapshot(raw, digest string) { p.snapshot, p.snapshotDigest = raw, digest }
+func (p *DefenseProject) CostCalculationVersion() string { return p.costCalculationVersion }
+func (p *DefenseProject) SetCostCalculationVersion(version string) {
+	p.costCalculationVersion = version
+}
 
 // SetProjectID обновляет ID проекта (используется при сохранении).
 func (p *DefenseProject) SetProjectID(id string) {

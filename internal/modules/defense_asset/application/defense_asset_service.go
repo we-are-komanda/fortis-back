@@ -15,19 +15,25 @@ import (
 
 // DefenseAssetService — сервис для управления средствами защиты.
 type DefenseAssetService struct {
-	repo   domain.DefenseAssetRepositoryInterface
-	access enterpriseApp.AccessChecker
+	repo      domain.DefenseAssetRepositoryInterface
+	documents domain.DocumentRepositoryInterface
+	access    enterpriseApp.AccessChecker
 }
 
 // NewDefenseAssetService создаёт новый сервис средств защиты.
-func NewDefenseAssetService(repo domain.DefenseAssetRepositoryInterface, access enterpriseApp.AccessChecker) *DefenseAssetService {
+func NewDefenseAssetService(repo domain.DefenseAssetRepositoryInterface, access enterpriseApp.AccessChecker, documents ...domain.DocumentRepositoryInterface) *DefenseAssetService {
+	var docs domain.DocumentRepositoryInterface
+	if len(documents) > 0 {
+		docs = documents[0]
+	}
 	return &DefenseAssetService{
-		repo: repo, access: access,
+		repo: repo, access: access, documents: docs,
 	}
 }
 
 // CreateInput — входные данные для создания средства защиты.
 type CreateInput struct {
+	CatalogMetadataInput
 	Name                   string
 	ShortName              string
 	Description            string
@@ -125,6 +131,9 @@ func (s *DefenseAssetService) Create(ctx context.Context, userID string, input C
 		return nil, err
 	}
 
+	if err := s.applyCatalogMetadata(ctx, userID, asset, input.CatalogMetadataInput); err != nil {
+		return nil, err
+	}
 	if err := s.repo.Save(ctx, asset); err != nil {
 		return nil, fmt.Errorf("save defense asset: %w", err)
 	}
@@ -208,6 +217,7 @@ func (s *DefenseAssetService) List(
 
 // UpdateInput — входные данные для обновления средства защиты.
 type UpdateInput struct {
+	CatalogMetadataInput
 	ID                     string
 	Name                   *string
 	ShortName              *string
@@ -250,6 +260,9 @@ func (s *DefenseAssetService) Update(ctx context.Context, userID string, input U
 	if err != nil {
 		return nil, err
 	}
+	// Setters replace fields; keep the loaded value unchanged if validation fails.
+	next := *asset
+	asset = &next
 
 	if input.IsPublic != nil && *input.IsPublic {
 		return nil, auth.ErrForbidden
@@ -363,6 +376,12 @@ func (s *DefenseAssetService) Update(ctx context.Context, userID string, input U
 
 	asset.SetUpdatedAt(time.Now().UTC())
 
+	if err := s.applyCatalogMetadata(ctx, userID, asset, input.CatalogMetadataInput); err != nil {
+		return nil, err
+	}
+	if err := asset.Validate(); err != nil {
+		return nil, err
+	}
 	if err := s.repo.Update(ctx, asset); err != nil {
 		return nil, fmt.Errorf("update defense asset: %w", err)
 	}

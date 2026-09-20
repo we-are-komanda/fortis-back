@@ -23,6 +23,13 @@ type DefenseProjectServiceInterface interface {
 	DeleteProject(ctx context.Context, actorID string, id string) error
 }
 
+type projectRevisionService interface {
+	CreateIdempotent(context.Context, string, string, string, string, string) (*domain.DefenseProject, error)
+	ImportIdempotent(context.Context, string, string, string) (*domain.DefenseProject, error)
+	GetRevision(context.Context, string, string, *int) (*domain.DefenseProject, error)
+	ExportRevision(context.Context, string, string, *int) (string, error)
+}
+
 // DefenseProjectController — контроллер для импорта/экспорта проектов защиты.
 type DefenseProjectController struct {
 	service DefenseProjectServiceInterface
@@ -60,8 +67,21 @@ func (c *DefenseProjectController) Import(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	project, err := c.service.Import(ctx, handlers.ActorID(ctx), req.ProjectJSON)
+	var project *domain.DefenseProject
+	var err error
+	if key := string(ctx.Request.Header.Peek("Idempotency-Key")); key != "" {
+		if service, ok := c.service.(projectRevisionService); ok {
+			project, err = service.ImportIdempotent(ctx, handlers.ActorID(ctx), req.ProjectJSON, key)
+		} else {
+			err = domain.ErrInvalidProjectData
+		}
+	} else {
+		project, err = c.service.Import(ctx, handlers.ActorID(ctx), req.ProjectJSON)
+	}
 	if err != nil {
+		if projectRevisionError(ctx, err) {
+			return
+		}
 		if handlers.AuthorizationError(ctx, err) {
 			return
 		}
@@ -109,8 +129,23 @@ func (c *DefenseProjectController) Export(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	jsonStr, err := c.service.Export(ctx, handlers.ActorID(ctx), projectID)
+	version, ok := requestedProjectVersion(ctx)
+	if !ok {
+		return
+	}
+	var jsonStr string
+	var err error
+	if service, ok := c.service.(projectRevisionService); ok {
+		jsonStr, err = service.ExportRevision(ctx, handlers.ActorID(ctx), projectID, version)
+	} else if version != nil {
+		err = domain.ErrRevisionNotFound
+	} else {
+		jsonStr, err = c.service.Export(ctx, handlers.ActorID(ctx), projectID)
+	}
 	if err != nil {
+		if projectRevisionError(ctx, err) {
+			return
+		}
 		if handlers.AuthorizationError(ctx, err) {
 			return
 		}
@@ -157,8 +192,21 @@ func (c *DefenseProjectController) Create(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	project, err := c.service.CreateFromJSON(ctx, handlers.ActorID(ctx), req.Name, req.EnterpriseID, req.ProjectJSON)
+	var project *domain.DefenseProject
+	var err error
+	if key := string(ctx.Request.Header.Peek("Idempotency-Key")); key != "" {
+		if service, ok := c.service.(projectRevisionService); ok {
+			project, err = service.CreateIdempotent(ctx, handlers.ActorID(ctx), req.Name, req.EnterpriseID, req.ProjectJSON, key)
+		} else {
+			err = domain.ErrInvalidProjectData
+		}
+	} else {
+		project, err = c.service.CreateFromJSON(ctx, handlers.ActorID(ctx), req.Name, req.EnterpriseID, req.ProjectJSON)
+	}
 	if err != nil {
+		if projectRevisionError(ctx, err) {
+			return
+		}
 		if handlers.AuthorizationError(ctx, err) {
 			return
 		}
@@ -252,8 +300,23 @@ func (c *DefenseProjectController) Get(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	project, err := c.service.GetProject(ctx, handlers.ActorID(ctx), projectID)
+	version, ok := requestedProjectVersion(ctx)
+	if !ok {
+		return
+	}
+	var project *domain.DefenseProject
+	var err error
+	if service, ok := c.service.(projectRevisionService); ok {
+		project, err = service.GetRevision(ctx, handlers.ActorID(ctx), projectID, version)
+	} else if version != nil {
+		err = domain.ErrRevisionNotFound
+	} else {
+		project, err = c.service.GetProject(ctx, handlers.ActorID(ctx), projectID)
+	}
 	if err != nil {
+		if projectRevisionError(ctx, err) {
+			return
+		}
 		if handlers.AuthorizationError(ctx, err) {
 			return
 		}
@@ -279,7 +342,7 @@ func (c *DefenseProjectController) Get(ctx *fasthttp.RequestCtx) {
 // swagger:route PUT /api/v1/projects/update api updateProject
 // Обновление конфигурации проекта защиты
 //
-// Обновляет имя и enterprise ID проекта.
+// Обновляет имя и содержимое с обязательной expected version. Enterprise ID неизменяем.
 //
 // Produces:
 //   - application/json
@@ -309,6 +372,8 @@ func (c *DefenseProjectController) Update(ctx *fasthttp.RequestCtx) {
 			return
 		}
 		switch {
+		case errors.Is(err, domain.ErrVersionRequired):
+			handlers.ErrorHandler(ctx, "version_required", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		case errors.Is(err, domain.ErrProjectNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "project not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
 		case errors.Is(err, domain.ErrInvalidSchemaVersion):
@@ -366,4 +431,30 @@ func (c *DefenseProjectController) Delete(ctx *fasthttp.RequestCtx) {
 	}
 
 	ctx.SetBodyString(`{"status":"ok"}`)
+}
+
+func requestedProjectVersion(ctx *fasthttp.RequestCtx) (*int, bool) {
+	if !ctx.QueryArgs().Has("projectVersion") {
+		return nil, true
+	}
+	version, err := strconv.Atoi(string(ctx.QueryArgs().Peek("projectVersion")))
+	if err != nil || version <= 0 {
+		handlers.ErrorHandler(ctx, "validation_error", "projectVersion must be a positive integer", &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
+		return nil, false
+	}
+	return &version, true
+}
+
+func projectRevisionError(ctx *fasthttp.RequestCtx, err error) bool {
+	switch {
+	case errors.Is(err, domain.ErrRevisionNotFound):
+		handlers.ErrorHandler(ctx, "revision_not_found", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusNotFound)
+	case errors.Is(err, domain.ErrIdempotencyConflict):
+		handlers.ErrorHandler(ctx, "idempotency_conflict", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusConflict)
+	case errors.Is(err, domain.ErrInvalidIdempotencyKey):
+		handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
+	default:
+		return false
+	}
+	return true
 }

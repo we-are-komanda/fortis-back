@@ -1,10 +1,38 @@
 package ui
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/fortis/backend/internal/modules/budget/domain"
 )
+
+func costProjectionToDTO(p *domain.CostProjection) CostProjectionDTO {
+	i := p.Identity()
+	dto := CostProjectionDTO{Identity: CalculationIdentityDTO{i.ProjectID(), i.ProjectVersion(), i.CalculationVersion(), i.InputDataVersions(), i.SnapshotDigest()}, Currency: "RUB", Lines: []FinancialLineDTO{}, ByLayer: []CostGroupDTO{}, ByType: []CostGroupDTO{}, KnownSubtotalMinor: p.KnownSubtotalMinor(), TotalMinor: p.TotalMinor(), IsComplete: p.IsComplete(), UnknownPriceObjectIDs: p.UnknownPriceObjectIDs(), Warnings: []CostIssueDTO{}}
+	for _, l := range p.Lines() {
+		var provenance *CostDataProvenanceDTO
+		if l.Provenance() != "" {
+			var value CostDataProvenanceDTO
+			if err := json.Unmarshal([]byte(l.Provenance()), &value); err == nil {
+				provenance = &value
+			}
+		}
+		dto.Lines = append(dto.Lines, FinancialLineDTO{l.ObjectID(), l.AssetID(), l.LayerID(), l.Category(), l.Name(), l.Quantity(), l.UnitPriceMinor(), l.LineTotalMinor(), l.PriceSource(), provenance})
+	}
+	groups := func(source []domain.CostGroup) []CostGroupDTO {
+		result := []CostGroupDTO{}
+		for _, g := range source {
+			result = append(result, CostGroupDTO{g.ID(), g.Name(), g.ObjectCount(), g.UnitCount(), g.KnownSubtotalMinor(), g.TotalMinor()})
+		}
+		return result
+	}
+	dto.ByLayer, dto.ByType = groups(p.ByLayer()), groups(p.ByType())
+	for _, w := range p.Warnings() {
+		dto.Warnings = append(dto.Warnings, CostIssueDTO{w.Code(), w.Severity(), w.ObjectIDs(), w.Message()})
+	}
+	return dto
+}
 
 // budgetConfigToDomain преобразует DTO в запрос на обновление.
 func budgetConfigToDTO(config *domain.BudgetConfig) BudgetConfigDTO {
@@ -150,9 +178,9 @@ func diffToDTO(d domain.ConfigDiff) ConfigDiffDTO {
 		ObjectCountDelta:     d.ObjectCountDelta(),
 		UnitCountDelta:       d.UnitCountDelta(),
 		EchelonCountDelta:    d.EchelonCountDelta(),
-		CategoryCountDelta:    d.CategoryCountDelta(),
-		ConflictCountDelta:    d.ConflictCountDelta(),
-		CoveredObjCountDelta:  d.CoveredObjCountDelta(),
+		CategoryCountDelta:   d.CategoryCountDelta(),
+		ConflictCountDelta:   d.ConflictCountDelta(),
+		CoveredObjCountDelta: d.CoveredObjCountDelta(),
 		CostDeltaMln:         d.CostDeltaMln(),
 		ByEchelon:            byEchelon,
 	}
@@ -166,8 +194,8 @@ func echelonDiffToDTO(ed domain.EchelonDiff) EchelonDiffDTO {
 		LayerName:          ed.LayerName(),
 		ObjectCountDelta:   ed.ObjectCountDelta(),
 		UnitCountDelta:     ed.UnitCountDelta(),
-		CategoryCountDelta:  ed.CategoryCountDelta(),
-		ConflictCountDelta:  ed.ConflictCountDelta(),
+		CategoryCountDelta: ed.CategoryCountDelta(),
+		ConflictCountDelta: ed.ConflictCountDelta(),
 		CoveredObjDelta:    ed.CoveredObjDelta(),
 	}
 }
@@ -180,9 +208,9 @@ func ptr[T any](v T) *T {
 // checkResultToDTO преобразует доменный результат проверки бюджета в DTO.
 func checkResultToDTO(result *domain.BudgetCheckResult) BudgetCheckResponse {
 	return BudgetCheckResponse{
-		Fits:          result.Fits(),
-		RemainingMln:  result.RemainingMln(),
-		RequiredMln:   result.RequiredMln(),
-		BudgetMode:    string(result.BudgetMode()),
+		Fits:         result.Fits(),
+		RemainingMln: result.RemainingMln(),
+		RequiredMln:  result.RequiredMln(),
+		BudgetMode:   string(result.BudgetMode()),
 	}
 }

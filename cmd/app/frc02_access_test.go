@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,7 @@ import (
 	pa "github.com/fortis/backend/internal/modules/defense_project/application"
 	pd "github.com/fortis/backend/internal/modules/defense_project/domain"
 	pu "github.com/fortis/backend/internal/modules/defense_project/ui"
+	demoUi "github.com/fortis/backend/internal/modules/demo_request/ui"
 	ea "github.com/fortis/backend/internal/modules/enterprise/application"
 	ed "github.com/fortis/backend/internal/modules/enterprise/domain"
 	eu "github.com/fortis/backend/internal/modules/enterprise/ui"
@@ -29,6 +31,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"go.uber.org/dig"
+	"mime/multipart"
+	"net/textproto"
 	"testing"
 	"time"
 )
@@ -53,6 +57,7 @@ func (m *mockRepo) Save(ctx context.Context, project *pd.DefenseProject) error {
 	if _, exists := m.projects[project.ProjectID()]; exists {
 		project.SetVersion(project.Version() + 1)
 	}
+	project.SetCostCalculationVersion(bd.CostCalculationV1)
 	m.projects[project.ProjectID()] = project
 	return nil
 }
@@ -238,8 +243,80 @@ func (r dr) FindByAssetID(c context.Context, id string) ([]*ad.Document, error) 
 	return x, nil
 }
 func (r dr) Delete(c context.Context, id string) error { delete(r, id); return nil }
+func (r dr) CommitDocument(ctx context.Context, doc *ad.Document, actor, action string) error {
+	return r.Save(ctx, doc)
+}
+func (r dr) DeleteDocument(ctx context.Context, id, actor string) error { return r.Delete(ctx, id) }
+func (r dr) ListDocuments(ctx context.Context, id string, limit, offset int) ([]*ad.Document, int64, error) {
+	items, err := r.FindByAssetID(ctx, id)
+	total := int64(len(items))
+	if offset >= len(items) {
+		return []*ad.Document{}, total, err
+	}
+	end := offset + limit
+	if end > len(items) {
+		end = len(items)
+	}
+	return items[offset:end], total, err
+}
+
+// Synthetic-only pipeline: real storage/scanner acceptance is exercised by FRC09.
+type frc02DocumentBytes map[string][]byte
+
+func (r frc02DocumentBytes) Ready() bool { return true }
+func (r frc02DocumentBytes) Put(_ context.Context, id string, body []byte) (string, error) {
+	r[id] = append([]byte(nil), body...)
+	return id, nil
+}
+func (r frc02DocumentBytes) Read(_ context.Context, id string) ([]byte, error) { return r[id], nil }
+func (r frc02DocumentBytes) Remove(_ context.Context, id string) error         { delete(r, id); return nil }
+
+type frc02CleanScanner struct{}
+
+func (frc02CleanScanner) Ready() bool                        { return true }
+func (frc02CleanScanner) Scan(context.Context, string) error { return nil }
+
+type frc02Multipart struct {
+	body        []byte
+	contentType string
+}
+
+func frc02Upload(asset, forgedOwner string) frc02Multipart {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	must(writer.WriteField("assetId", asset))
+	if forgedOwner != "" {
+		must(writer.WriteField("ownerId", forgedOwner))
+	}
+	part, err := writer.CreatePart(textproto.MIMEHeader{"Content-Disposition": {`form-data; name="file"; filename="synthetic.txt"`}, "Content-Type": {"text/plain"}})
+	must(err)
+	_, err = part.Write([]byte("Synthetic document fixture"))
+	must(err)
+	must(writer.Close())
+	return frc02Multipart{body.Bytes(), writer.FormDataContentType()}
+}
 
 type br map[string]*bd.BudgetConfig
+
+type costMemoryRepo map[string]*bd.CostProjection
+
+func (r costMemoryRepo) FindCostProjection(_ context.Context, id string, version int, calculator string) (*bd.CostProjection, error) {
+	for _, p := range r {
+		i := p.Identity()
+		if i.ProjectID() == id && i.ProjectVersion() == version && i.CalculationVersion() == calculator {
+			return p, nil
+		}
+	}
+	return nil, bd.ErrCostProjectionNotFound
+}
+func (r costMemoryRepo) SaveCostProjection(ctx context.Context, p *bd.CostProjection) (*bd.CostProjection, error) {
+	i := p.Identity()
+	if saved, err := r.FindCostProjection(ctx, i.ProjectID(), i.ProjectVersion(), i.CalculationVersion()); err == nil {
+		return saved, nil
+	}
+	r[js([]any{i.ProjectID(), i.ProjectVersion(), i.CalculationVersion()})] = p
+	return p, nil
+}
 
 func (r br) FindByProjectID(c context.Context, id string) (*bd.BudgetConfig, error) {
 	if b := r[id]; b != nil {
@@ -302,9 +379,9 @@ func newAccessFixture(t *testing.T) accessFixture {
 	ar.memberships = erp.links
 	as := aa.NewDefenseAssetService(ar, es)
 	docs := dr{}
-	ds := aa.NewDocumentService(docs, as)
+	ds := aa.NewDocumentService(docs, as, aa.DocumentPipeline{Storage: frc02DocumentBytes{}, Scanner: frc02CleanScanner{}})
 	budgets := br{}
-	bs := ba.NewBudgetService(budgets, ps)
+	bs := ba.NewBudgetService(budgets, ps, costMemoryRepo{})
 	rs := ra.NewReportService(ps, bs, as)
 	people := []person{}
 	for _, name := range []string{"A", "B"} {
@@ -320,15 +397,18 @@ func newAccessFixture(t *testing.T) accessFixture {
 		eid := ent.ID()
 		a, e := as.Create(c, u.ID(), aa.CreateInput{Name: "Private " + name, Category: ad.DefenseAssetCategoryRadar, CoverageType: ad.DefenseAssetCoverageCircle, EnterpriseID: &eid})
 		must(e)
-		d, e := ds.Create(c, u.ID(), aa.CreateDocumentInput{AssetID: a.ID(), Name: "Document " + name, StorageKey: "fixture/" + name, DownloadURL: "https://storage.example.test/" + name})
+		ownerID := u.ID()
+		d, e := ad.NewDocument(uuid.NewString(), a.ID(), "Document "+name, "text/plain", "fixture/"+name, "https://storage.example.test/"+name, 0, &ownerID, time.Now(), time.Now())
 		must(e)
+		must(docs.Save(c, d))
 		must(bs.UpdateBudgetConfig(c, u.ID(), p.ProjectID(), bd.BudgetModeUnlimited, 0))
 		people = append(people, person{u.ID(), ent.ID(), p.ProjectID(), a.ID(), d.ID(), t})
 	}
 	public, e := as.Create(c, people[0].u, aa.CreateInput{Name: "Public reference", Category: ad.DefenseAssetCategoryRadar, CoverageType: ad.DefenseAssetCoverageCircle, EnterpriseID: &people[0].e})
 	must(e)
-	publicDoc, e := ds.Create(c, people[0].u, aa.CreateDocumentInput{AssetID: public.ID(), Name: "Public document", StorageKey: "fixture/public", DownloadURL: "https://storage.example.test/public"})
+	publicDoc, e := ad.NewDocument(uuid.NewString(), public.ID(), "Public document", "text/plain", "fixture/public", "https://storage.example.test/public", 0, &people[0].u, time.Now(), time.Now())
 	must(e)
+	must(docs.Save(c, publicDoc))
 	public.SetIsPublic(true)
 	must(ar.Update(c, public))
 	ec := eu.NewEnterpriseController(es)
@@ -341,13 +421,14 @@ func newAccessFixture(t *testing.T) accessFixture {
 
 	app := &Application{container: dig.New()}
 	for _, provider := range []any{
+		func() *demoUi.Controller { return demoUi.NewController(nil, demoUi.TransportConfig{}) },
 		func() *eu.EnterpriseController { return ec }, func() *pu.DefenseProjectController { return pc }, func() *au.DefenseAssetController { return ac }, func() *au.DocumentController { return dc }, func() *bu.BudgetController { return bc }, func() *ru.ReportController { return rc }, func() *uu.UserController { return uc }, func() *platformUi.ExampleController { return &platformUi.ExampleController{} },
 	} {
 		require.NoError(t, app.container.Provide(provider))
 	}
 	r := router.New()
 	require.NoError(t, app.registerHandlers(r))
-	h := middleware.NewAuthRequired(secret, []string{"^/api/v1/auth/register$", "^/api/v1/auth/login$", "^/api/v1/token_validate$"}, us).Process(r.Handler)
+	h := middleware.NewAuthRequired(secret, publicAuthPaths, us).Process(r.Handler)
 	return accessFixture{people, public.ID(), publicDoc.ID(), h, erp, pr, ar, docs, budgets, users}
 }
 func (f accessFixture) request(t *testing.T, actor person, method, path string, body any, want int) string {
@@ -360,7 +441,10 @@ func (f accessFixture) request(t *testing.T, actor person, method, path string, 
 	if actor.token != "" {
 		x.Request.Header.Set("Authorization", "Bearer "+actor.token)
 	}
-	if body != nil {
+	if payload, ok := body.(frc02Multipart); ok {
+		x.Request.Header.SetContentType(payload.contentType)
+		x.Request.SetBody(payload.body)
+	} else if body != nil {
 		x.Request.SetBodyString(js(body))
 	}
 	f.h(&x)
@@ -452,9 +536,8 @@ func TestFRC02TenantIsolation(t *testing.T) {
 			t.Run("J_public_catalog", func(t *testing.T) {
 				f.request(t, own, "GET", "/assets/get?id="+f.publicAsset, nil, 200)
 				f.request(t, own, "GET", "/assets/documents/list?assetId="+f.publicAsset, nil, 200)
-				for _, path := range []string{"/assets/documents/get", "/assets/documents/download"} {
-					f.request(t, own, "GET", path+"?id="+f.publicDocument, nil, 200)
-				}
+				f.request(t, own, "GET", "/assets/documents/get?id="+f.publicDocument, nil, 200)
+				f.request(t, own, "GET", "/assets/documents/download?id="+f.publicDocument, nil, 404)
 				f.request(t, own, "POST", "/assets", map[string]any{"name": "global", "category": "radar", "coverageType": "circle", "isPublic": true}, 403)
 				f.request(t, own, "PUT", "/assets/update?id="+f.publicAsset, map[string]string{"name": "stolen"}, 403)
 				f.request(t, own, "DELETE", "/assets/delete?id="+f.publicAsset, nil, 403)
@@ -564,7 +647,9 @@ func TestFRC02MemberCRUDAndPagination(t *testing.T) {
 		ID      string `json:"id"`
 		OwnerID string `json:"ownerId"`
 	}
-	require.NoError(t, json.Unmarshal([]byte(f.request(t, a, "POST", "/assets/documents", map[string]string{"assetId": a.a, "name": "Member document", "storageKey": "fixture/member", "ownerId": f.people[1].u}, 201)), &doc))
+	f.request(t, a, "POST", "/assets/documents", map[string]string{"assetId": a.a, "name": "Forged metadata", "storageKey": "fixture/member", "ownerId": f.people[1].u}, 400)
+	f.request(t, a, "POST", "/assets/documents", frc02Upload(a.a, f.people[1].u), 400)
+	require.NoError(t, json.Unmarshal([]byte(f.request(t, a, "POST", "/assets/documents", frc02Upload(a.a, ""), 201)), &doc))
 	require.Equal(t, a.u, doc.OwnerID)
 	require.NotEmpty(t, doc.ID)
 	f.request(t, a, "GET", "/assets/documents/get?id="+doc.ID, nil, 200)
@@ -591,7 +676,8 @@ func TestFRC02ForeignMissingAndInvalidIdentity(t *testing.T) {
 	}
 	f.assets.assets[f.publicAsset].SetEnterpriseID(nil)
 	f.request(t, a, "GET", "/assets/get?id="+f.publicAsset, nil, 200)
-	f.request(t, b, "GET", "/assets/documents/download?id="+f.publicDocument, nil, 200)
+	f.request(t, b, "GET", "/assets/documents/get?id="+f.publicDocument, nil, 200)
+	f.request(t, b, "GET", "/assets/documents/download?id="+f.publicDocument, nil, 404)
 }
 
 func TestFRC02ProductionDependencyGraph(t *testing.T) {

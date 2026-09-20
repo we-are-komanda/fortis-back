@@ -3,6 +3,7 @@ package ui
 // DefenseAssetDTO DTO ответа с данными средства защиты.
 // swagger:model DefenseAssetDTO
 type DefenseAssetDTO struct {
+	CatalogMetadataDTO
 	// ID средства защиты
 	// Example: 550e8400-e29b-41d4-a716-446655440000
 	ID string `json:"id"`
@@ -15,11 +16,11 @@ type DefenseAssetDTO struct {
 	// Описание
 	Description string `json:"description,omitempty"`
 	// Категория (radiotechnical, radar, electronic-warfare, missile, anti-missile, shturmovaya, artillery, aircraft, helicopter, uav, ship, fortification, infrastructure)
-	// Enum: ["radiotechnical","radar","electronic-warfare","missile","anti-missile","shturmovaya","artillery","aircraft","helicopter","uav","ship","fortification","infrastructure"]
+	// Enum: ["early-warning","detection","classification","jamming","spoofing","kinetic","interceptor","passive-protection","engineering-protection","software","command-center","external-service","radiotechnical","radar","electronic-warfare","missile","anti-missile","shturmovaya","artillery","aircraft","helicopter","uav","ship","fortification","infrastructure"]
 	// Example: radar
 	Category string `json:"category"`
 	// Роли (detection, destruction, ew, c2, cover, deception, supply, engineering, recon, special)
-	// items.enum: ["detection","destruction","ew","c2","cover","deception","supply","engineering","recon","special"]
+	// items.enum: ["detect","track","classify","suppress","destroy","delay","protect","coordinate","monitor","alert","detection","destruction","ew","c2","cover","deception","supply","engineering","recon","special"]
 	Roles []string `json:"roles,omitempty"`
 	// Цена за единицу в млн руб
 	PricePerUnitMln *float64 `json:"pricePerUnitMln,omitempty"`
@@ -166,8 +167,9 @@ type EWSpecDTO struct {
 }
 
 // CreateDefenseAssetRequest DTO запроса на создание средства защиты.
-// swagger:parameters CreateDefenseAssetRequest
+// swagger:model CreateDefenseAssetRequest
 type CreateDefenseAssetRequest struct {
+	CatalogMetadataDTO
 	// Название средства защиты
 	// Required: true
 	// Example: РЛС 55Ж6
@@ -178,11 +180,11 @@ type CreateDefenseAssetRequest struct {
 	Description string `json:"description,omitempty"`
 	// Категория
 	// Required: true
-	// Enum: ["radiotechnical","radar","electronic-warfare","missile","anti-missile","shturmovaya","artillery","aircraft","helicopter","uav","ship","fortification","infrastructure"]
+	// Enum: ["early-warning","detection","classification","jamming","spoofing","kinetic","interceptor","passive-protection","engineering-protection","software","command-center","external-service","radiotechnical","radar","electronic-warfare","missile","anti-missile","shturmovaya","artillery","aircraft","helicopter","uav","ship","fortification","infrastructure"]
 	// Example: radar
 	Category string `json:"category"`
 	// Роли
-	// items.enum: ["detection","destruction","ew","c2","cover","deception","supply","engineering","recon","special"]
+	// items.enum: ["detect","track","classify","suppress","destroy","delay","protect","coordinate","monitor","alert","detection","destruction","ew","c2","cover","deception","supply","engineering","recon","special"]
 	Roles []string `json:"roles,omitempty"`
 	// Цена за единицу в млн руб
 	PricePerUnitMln *float64 `json:"pricePerUnitMln,omitempty"`
@@ -252,8 +254,9 @@ type CreateDefenseAssetRequest struct {
 }
 
 // UpdateDefenseAssetRequest DTO запроса на обновление средства защиты.
-// swagger:parameters UpdateDefenseAssetRequest
+// swagger:model UpdateDefenseAssetRequest
 type UpdateDefenseAssetRequest struct {
+	CatalogMetadataDTO
 	// Название средства защиты
 	Name *string `json:"name,omitempty"`
 	// Краткое название
@@ -261,10 +264,10 @@ type UpdateDefenseAssetRequest struct {
 	// Описание
 	Description *string `json:"description,omitempty"`
 	// Категория
-	// Enum: ["radiotechnical","radar","electronic-warfare","missile","anti-missile","shturmovaya","artillery","aircraft","helicopter","uav","ship","fortification","infrastructure"]
+	// Enum: ["early-warning","detection","classification","jamming","spoofing","kinetic","interceptor","passive-protection","engineering-protection","software","command-center","external-service","radiotechnical","radar","electronic-warfare","missile","anti-missile","shturmovaya","artillery","aircraft","helicopter","uav","ship","fortification","infrastructure"]
 	Category *string `json:"category,omitempty"`
 	// Роли
-	// items.enum: ["detection","destruction","ew","c2","cover","deception","supply","engineering","recon","special"]
+	// items.enum: ["detect","track","classify","suppress","destroy","delay","protect","coordinate","monitor","alert","detection","destruction","ew","c2","cover","deception","supply","engineering","recon","special"]
 	Roles []string `json:"roles,omitempty"`
 	// Цена за единицу
 	PricePerUnitMln *float64 `json:"pricePerUnitMln,omitempty"`
@@ -329,7 +332,7 @@ type UpdateDefenseAssetRequest struct {
 }
 
 // DefenseAssetListResponse DTO ответа со списком средств защиты.
-// swagger:response DefenseAssetListResponse
+// swagger:model DefenseAssetListResponse
 type DefenseAssetListResponse struct {
 	// Список элементов
 	Items []DefenseAssetDTO `json:"items"`
@@ -338,7 +341,7 @@ type DefenseAssetListResponse struct {
 }
 
 // AssetListQuery DTO query-параметров для списка средств защиты.
-// swagger:parameters AssetListQuery
+// swagger:parameters listDefenseAssets
 type AssetListQuery struct {
 	// ID предприятия для фильтрации
 	// In: query
@@ -351,19 +354,50 @@ type AssetListQuery struct {
 	Category string `json:"category"`
 	// Количество записей на странице (по умолчанию 20, макс 100)
 	// In: query
-	// Example: 20
 	Limit int `json:"limit"`
 	// Смещение от начала списка
 	// In: query
-	// Example: 0
 	Offset int `json:"offset"`
 }
 
 // AssetGetQuery DTO query-параметров для получения по ID.
-// swagger:parameters AssetGetQuery
+// swagger:parameters getDefenseAsset deleteDefenseAsset
 type AssetGetQuery struct {
 	// ID средства защиты
 	// Required: true
 	// In: query
 	ID string `json:"id"`
+}
+
+// DefenseAssetResponse описывает тело ответа карточки.
+// swagger:response DefenseAssetResponse
+type DefenseAssetResponse struct {
+	// In: body
+	Body DefenseAssetDTO
+}
+
+// DefenseAssetListResponseBody описывает тело списка карточек.
+// swagger:response DefenseAssetListResponse
+type DefenseAssetListResponseBody struct {
+	// In: body
+	Body DefenseAssetListResponse
+}
+
+// CreateDefenseAssetParams описывает JSON создания карточки.
+// swagger:parameters createDefenseAsset
+type CreateDefenseAssetParams struct {
+	// In: body
+	// Required: true
+	Body CreateDefenseAssetRequest
+}
+
+// UpdateDefenseAssetParams описывает идентификатор и JSON обновления карточки.
+// swagger:parameters updateDefenseAsset
+type UpdateDefenseAssetParams struct {
+	// In: query
+	// Required: true
+	ID string `json:"id"`
+	// In: body
+	// Required: true
+	Body UpdateDefenseAssetRequest
 }

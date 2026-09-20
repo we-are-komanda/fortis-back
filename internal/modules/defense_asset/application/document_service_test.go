@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"github.com/fortis/backend/internal/auth"
+	"github.com/google/uuid"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -69,29 +71,13 @@ func (m *mockDocumentRepository) Delete(_ context.Context, id string) error {
 	return nil
 }
 
-func TestDocumentService_Create_Success(t *testing.T) {
-	mockRepo := newMockDocumentRepository()
-	service := NewDocumentService(mockRepo, testDocumentAssets(t))
-
-	input := CreateDocumentInput{
-		AssetID:     "asset-id-123",
-		Name:        "document.pdf",
-		MimeType:    "application/pdf",
-		SizeBytes:   2048,
-		StorageKey:  "storage/key/document.pdf",
-		DownloadURL: "https://download.url/document.pdf",
-		OwnerID:     nil,
-	}
-
-	doc, err := service.Create(context.Background(), "actor", input)
-	require.NoError(t, err)
-	require.NotNil(t, doc)
-	assert.Equal(t, "asset-id-123", doc.AssetID())
-	assert.Equal(t, "document.pdf", doc.Name())
-	assert.Equal(t, "application/pdf", doc.MimeType())
-	assert.Equal(t, int64(2048), doc.SizeBytes())
-	assert.Equal(t, "storage/key/document.pdf", doc.StorageKey())
-	assert.NotEmpty(t, doc.ID())
+func TestDocumentService_Create_MetadataRejected(t *testing.T) {
+	repo := newMockDocumentRepository()
+	s := NewDocumentService(repo, testDocumentAssets(t))
+	doc, err := s.Create(context.Background(), "actor", CreateDocumentInput{AssetID: "asset-id-123", Name: "sample.txt", StorageKey: "external", DownloadURL: "https://example.test/public"})
+	require.ErrorIs(t, err, domain.ErrDocumentUploadRequired)
+	require.Nil(t, doc)
+	require.Empty(t, repo.documents)
 }
 
 func TestDocumentService_Create_InvalidName(t *testing.T) {
@@ -107,7 +93,7 @@ func TestDocumentService_Create_InvalidName(t *testing.T) {
 	}
 
 	_, err := service.Create(context.Background(), "actor", input)
-	assert.ErrorIs(t, err, domain.ErrDocumentInvalidName)
+	assert.ErrorIs(t, err, domain.ErrDocumentUploadRequired)
 }
 
 func TestDocumentService_Create_InvalidAssetID(t *testing.T) {
@@ -138,7 +124,7 @@ func TestDocumentService_GetByID_Success(t *testing.T) {
 		StorageKey: "storage/key/doc.pdf",
 	}
 
-	created, err := service.Create(context.Background(), "actor", input)
+	created, err := seedDocument(mockRepo, input)
 	require.NoError(t, err)
 
 	doc, err := service.GetByID(context.Background(), "actor", created.ID())
@@ -167,7 +153,7 @@ func TestDocumentService_ListByAssetID_Success(t *testing.T) {
 	}
 
 	for _, d := range docs {
-		_, err := service.Create(context.Background(), "actor", d)
+		_, err := seedDocument(mockRepo, d)
 		require.NoError(t, err)
 	}
 
@@ -196,7 +182,7 @@ func TestDocumentService_Delete_Success(t *testing.T) {
 		StorageKey: "storage/key/doc.pdf",
 	}
 
-	created, err := service.Create(context.Background(), "actor", input)
+	created, err := seedDocument(mockRepo, input)
 	require.NoError(t, err)
 
 	err = service.Delete(context.Background(), "actor", created.ID())
@@ -228,5 +214,24 @@ func TestDocumentService_Create_RepoError(t *testing.T) {
 	}
 
 	_, err := service.Create(context.Background(), "actor", input)
-	assert.ErrorContains(t, err, "save document")
+	assert.ErrorIs(t, err, domain.ErrDocumentUploadRequired)
+}
+
+func seedDocument(repo *mockDocumentRepository, input CreateDocumentInput) (*domain.Document, error) {
+	now := time.Now().UTC()
+	doc, err := domain.NewDocument(uuid.NewString(), input.AssetID, input.Name, input.MimeType, input.StorageKey, input.DownloadURL, input.SizeBytes, nil, now, now)
+	if err != nil {
+		return nil, err
+	}
+	return doc, repo.Save(context.Background(), doc)
+}
+func (m *mockDocumentRepository) CommitDocument(ctx context.Context, d *domain.Document, actor, action string) error {
+	return m.Save(ctx, d)
+}
+func (m *mockDocumentRepository) DeleteDocument(ctx context.Context, id, actor string) error {
+	return m.Delete(ctx, id)
+}
+func (m *mockDocumentRepository) ListDocuments(ctx context.Context, id string, limit, offset int) ([]*domain.Document, int64, error) {
+	docs, err := m.FindByAssetID(ctx, id)
+	return docs, int64(len(docs)), err
 }

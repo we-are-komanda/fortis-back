@@ -3,21 +3,25 @@
 // Documentation for fortis-backend.
 //
 //	Schemes: http
-//	BasePath: /api/v1
+//	BasePath: /
 //	Version: 1.0.0
 //
 // swagger:meta
 package main
 
 import (
+	"context"
+	"flag"
 	"fmt"
 	"github.com/fasthttp/router"
-	"github.com/valyala/fasthttp"
-	"go.uber.org/dig"
 	"github.com/fortis/backend/internal/config"
 	"github.com/fortis/backend/internal/metrics"
 	"github.com/fortis/backend/internal/middleware"
+	demoApp "github.com/fortis/backend/internal/modules/demo_request/application"
+	demoUi "github.com/fortis/backend/internal/modules/demo_request/ui"
 	"github.com/fortis/backend/internal/probe"
+	"github.com/valyala/fasthttp"
+	"go.uber.org/dig"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -140,6 +144,14 @@ func (app *Application) Run() {
 	slog.Info(fmt.Sprintf("work_mode=%s", cnf.WorkMode))
 
 	switch cnf.WorkMode {
+	case "demo-request-registry":
+		// Local operator command requires the process's OS and database privileges.
+		flags := flag.NewFlagSet("demo-request-registry", flag.ExitOnError)
+		limit, offset := flags.Int("limit", 100, "maximum rows"), flags.Int("offset", 0, "row offset")
+		processError(flags.Parse(os.Args[1:]))
+		processError(app.container.Invoke(func(service *demoApp.Service) error {
+			return demoUi.WriteRegistry(context.Background(), service, os.Stdout, *limit, *offset)
+		}))
 	case "webapp":
 		var webApp fasthttp.RequestHandler
 
@@ -149,20 +161,31 @@ func (app *Application) Run() {
 		}
 
 		server := &fasthttp.Server{
-			Handler:         webApp,
-			ReadBufferSize:  10485760,
-			WriteBufferSize: 10485760,
+			Handler:            webApp,
+			ReadBufferSize:     10485760,
+			MaxRequestBodySize: 11 * 1024 * 1024,
+			WriteBufferSize:    10485760,
 		}
+
+		workerCtx, stopWorker := context.WithCancel(context.Background())
+		defer stopWorker()
+		workerDone := make(chan struct{})
+		processError(app.container.Invoke(func(service *demoApp.Service) {
+			go func() { defer close(workerDone); service.Run(workerCtx) }()
+		}))
 
 		go func(server *fasthttp.Server) {
 			<-shutdown
 			slog.Info("signal for termination received")
+			stopWorker()
 			GracefulShutdown(server)
 		}(server)
 
 		slog.Info("webserver=started")
 		err = server.ListenAndServe("0.0.0.0:8090")
-		if err == nil {
+		stopWorker()
+		<-workerDone
+		if err != nil {
 			processError(err)
 		}
 		slog.Info("webserver=stopped")

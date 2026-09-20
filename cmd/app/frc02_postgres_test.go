@@ -7,6 +7,7 @@ import (
 	bi "github.com/fortis/backend/internal/modules/budget/infrastructure"
 	ai "github.com/fortis/backend/internal/modules/defense_asset/infrastructure"
 	pi "github.com/fortis/backend/internal/modules/defense_project/infrastructure"
+	demoUi "github.com/fortis/backend/internal/modules/demo_request/ui"
 	ea "github.com/fortis/backend/internal/modules/enterprise/application"
 	ed "github.com/fortis/backend/internal/modules/enterprise/domain"
 	ei "github.com/fortis/backend/internal/modules/enterprise/infrastructure"
@@ -65,7 +66,7 @@ func TestFRC02Postgres(t *testing.T) {
 				f.request(t, a, "GET", p+"?id="+b.p, nil, 404)
 			}
 			f.request(t, a, "PUT", "/projects/update?id="+b.p, map[string]string{"name": "stolen"}, 404)
-			f.request(t, a, "PUT", "/projects/update?id="+a.p, map[string]string{"name": "allowed"}, 200)
+			f.request(t, a, "PUT", "/projects/update?id="+a.p, map[string]any{"name": "allowed", "version": 1}, 200)
 			f.request(t, a, "PUT", "/projects/update?id="+a.p, map[string]string{"enterpriseId": b.e}, 400)
 			for _, pair := range [][2]string{{a.p, b.p}, {b.p, a.p}, {b.p, b.p}} {
 				f.request(t, a, "GET", "/projects/compare?id1="+pair[0]+"&id2="+pair[1], nil, 404)
@@ -75,10 +76,11 @@ func TestFRC02Postgres(t *testing.T) {
 			require.Contains(t, body, `"totalItems":2`)
 			f.request(t, a, "GET", "/assets/get?id="+a.a, nil, 200)
 			f.request(t, a, "GET", "/assets/get?id="+b.a, nil, 404)
-			f.request(t, a, "GET", "/assets/documents/download?id="+a.d, nil, 200)
+			f.request(t, a, "GET", "/assets/documents/get?id="+a.d, nil, 200)
+			f.request(t, a, "GET", "/assets/documents/download?id="+a.d, nil, 404)
 			body = f.request(t, a, "GET", "/assets/documents/download?id="+b.d, nil, 404)
 			require.NotContains(t, body, "storage")
-			f.request(t, a, "GET", "/assets/documents/download?id="+f.publicDocument, nil, 200)
+			f.request(t, a, "GET", "/assets/documents/download?id="+f.publicDocument, nil, 404)
 			f.request(t, a, "DELETE", "/assets/documents/delete?id="+f.publicDocument, nil, 403)
 		})
 	}
@@ -90,14 +92,14 @@ func TestFRC02Postgres(t *testing.T) {
 	f.request(t, b, "GET", "/assets/get?id="+b.a, nil, 404)
 	f.request(t, b, "GET", "/assets/documents/download?id="+b.d, nil, 404)
 	require.NoError(t, tx.Exec("UPDATE defense_assets SET enterprise_id = NULL WHERE id = ?", f.publicAsset).Error)
-	f.request(t, a, "GET", "/assets/documents/download?id="+f.publicDocument, nil, 200)
+	f.request(t, a, "GET", "/assets/documents/download?id="+f.publicDocument, nil, 404)
 	require.NoError(t, ei.NewEnterpriseRepository(tx).RemoveUserFromEnterprise(context.Background(), a.u, a.e))
 	for _, path := range []string{"/enterprises?id=" + a.e, "/projects/get?id=" + a.p, "/projects/budget?id=" + a.p, "/projects/cost?id=" + a.p, "/projects/report?id=" + a.p, "/assets/get?id=" + a.a, "/assets/documents/download?id=" + a.d, "/projects/compare?id1=" + a.p + "&id2=" + a.p} {
 		f.request(t, a, "GET", path, nil, 404)
 	}
 	f.request(t, a, "PUT", "/projects/update?id="+a.p, map[string]string{"name": "revoked"}, 404)
 }
-func newPostgresFixture(t *testing.T, db *gorm.DB) accessFixture {
+func newPostgresFixture(t *testing.T, db *gorm.DB, pipeline ...aa.DocumentPipeline) accessFixture {
 	c := context.Background()
 	secret := "frc02-local-fixture-only"
 	users := ui.NewUserRepository(db)
@@ -107,11 +109,11 @@ func newPostgresFixture(t *testing.T, db *gorm.DB) accessFixture {
 	pr := pi.NewDefenseProjectRepository(db)
 	ps := pa.NewDefenseProjectService(pr, es)
 	ar := ai.NewDefenseAssetRepository(db)
-	as := aa.NewDefenseAssetService(ar, es)
 	docs := ai.NewDocumentRepository(db)
-	ds := aa.NewDocumentService(docs, as)
+	as := aa.NewDefenseAssetService(ar, es, docs)
+	ds := aa.NewDocumentService(docs, as, pipeline...)
 	budgets := bi.NewBudgetConfigRepository(db)
-	bs := ba.NewBudgetService(budgets, ps)
+	bs := ba.NewBudgetService(budgets, ps, budgets)
 	rs := ra.NewReportService(ps, bs, as)
 	people := []person{}
 	for _, name := range []string{"A", "B"} {
@@ -127,15 +129,18 @@ func newPostgresFixture(t *testing.T, db *gorm.DB) accessFixture {
 		eid := ent.ID()
 		a, e := as.Create(c, u.ID(), aa.CreateInput{Name: "Private " + name, Category: ad.DefenseAssetCategoryRadar, CoverageType: ad.DefenseAssetCoverageCircle, EnterpriseID: &eid})
 		must(e)
-		d, e := ds.Create(c, u.ID(), aa.CreateDocumentInput{AssetID: a.ID(), Name: "Document " + name, StorageKey: "fixture/" + name, DownloadURL: "https://storage.example.test/" + name})
+		ownerID := u.ID()
+		d, e := ad.NewDocument(uuid.NewString(), a.ID(), "Document "+name, "text/plain", "fixture/"+name, "https://storage.example.test/"+name, 0, &ownerID, time.Now(), time.Now())
 		must(e)
+		must(docs.Save(c, d))
 		must(bs.UpdateBudgetConfig(c, u.ID(), p.ProjectID(), bd.BudgetModeUnlimited, 0))
 		people = append(people, person{u.ID(), ent.ID(), p.ProjectID(), a.ID(), d.ID(), t})
 	}
 	public, e := as.Create(c, people[0].u, aa.CreateInput{Name: "Public reference", Category: ad.DefenseAssetCategoryRadar, CoverageType: ad.DefenseAssetCoverageCircle, EnterpriseID: &people[0].e})
 	must(e)
-	publicDoc, e := ds.Create(c, people[0].u, aa.CreateDocumentInput{AssetID: public.ID(), Name: "Public document", StorageKey: "fixture/public", DownloadURL: "https://storage.example.test/public"})
+	publicDoc, e := ad.NewDocument(uuid.NewString(), public.ID(), "Public document", "text/plain", "fixture/public", "https://storage.example.test/public", 0, &people[0].u, time.Now(), time.Now())
 	must(e)
+	must(docs.Save(c, publicDoc))
 	public.SetIsPublic(true)
 	must(ar.Update(c, public))
 	ec := eu.NewEnterpriseController(es)
@@ -148,13 +153,14 @@ func newPostgresFixture(t *testing.T, db *gorm.DB) accessFixture {
 
 	app := &Application{container: dig.New()}
 	for _, provider := range []any{
+		func() *demoUi.Controller { return demoUi.NewController(nil, demoUi.TransportConfig{}) },
 		func() *eu.EnterpriseController { return ec }, func() *pu.DefenseProjectController { return pc }, func() *au.DefenseAssetController { return ac }, func() *au.DocumentController { return dc }, func() *bu.BudgetController { return bc }, func() *ru.ReportController { return rc }, func() *uu.UserController { return uc }, func() *platformUi.ExampleController { return &platformUi.ExampleController{} },
 	} {
 		require.NoError(t, app.container.Provide(provider))
 	}
 	r := router.New()
 	require.NoError(t, app.registerHandlers(r))
-	h := middleware.NewAuthRequired(secret, []string{"^/api/v1/auth/register$", "^/api/v1/auth/login$", "^/api/v1/token_validate$"}, us).Process(r.Handler)
+	h := middleware.NewAuthRequired(secret, publicAuthPaths, us).Process(r.Handler)
 	return accessFixture{people: people, publicAsset: public.ID(), publicDocument: publicDoc.ID(), h: h}
 }
 
@@ -191,12 +197,16 @@ func TestFRC02BrowserServer(t *testing.T) {
 	if os.Getenv("FRC02_BROWSER_SERVER") != "true" {
 		t.Skip("browser fixture disabled")
 	}
-	tx := frc02TestDatabase(t)
-	f := newPostgresFixture(t, tx)
+	// HTTP requests need independent connections; a shared outer transaction is not concurrent-safe.
+	t.Setenv("FORTIS_FRC04_TEST_DSN", os.Getenv("FRC02_TEST_DSN"))
+	tx := frc04Database(t)
+	storage := ai.NewLocalDocumentStorage(ai.DocumentStorageConfig{RootDir: filepath.Join(t.TempDir(), "private"), Enabled: true})
+	// This scanner accepts synthetic fixtures only; it is not production scanner evidence.
+	f := newPostgresFixture(t, tx, aa.DocumentPipeline{Storage: storage, Scanner: frc02CleanScanner{}})
 	listener, err := net.Listen("tcp", "127.0.0.1:8092")
 	require.NoError(t, err)
 	stopped := make(chan struct{})
-	server := &fasthttp.Server{Handler: func(ctx *fasthttp.RequestCtx) {
+	server := &fasthttp.Server{MaxRequestBodySize: 11 * 1024 * 1024, Handler: func(ctx *fasthttp.RequestCtx) {
 		switch string(ctx.Path()) {
 		case "/__fixture":
 			ctx.SetContentType("application/json")

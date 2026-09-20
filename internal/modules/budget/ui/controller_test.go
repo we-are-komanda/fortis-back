@@ -17,6 +17,7 @@ type mockBudgetService struct {
 	getConfigFn      func(ctx context.Context, projectID string) (*domain.BudgetConfig, error)
 	updateConfigFn   func(ctx context.Context, projectID string, mode domain.BudgetMode, amountMln float64) error
 	calcCostFn       func(ctx context.Context, projectID string) (*domain.CostCalculation, error)
+	projectCostFn    func(ctx context.Context, projectID string, version *int) (*domain.CostProjection, error)
 	checkBudgetFn    func(ctx context.Context, projectID string, input domain.BudgetCheckInput) (*domain.BudgetCheckResult, error)
 	compareConfigsFn func(ctx context.Context, projectID1, projectID2 string) (*domain.ConfigComparison, error)
 }
@@ -31,6 +32,9 @@ func (m *mockBudgetService) UpdateBudgetConfig(ctx context.Context, actorID stri
 
 func (m *mockBudgetService) CalculateCost(ctx context.Context, actorID string, projectID string) (*domain.CostCalculation, error) {
 	return m.calcCostFn(ctx, projectID)
+}
+func (m *mockBudgetService) ProjectCost(ctx context.Context, actorID, projectID string, version *int) (*domain.CostProjection, error) {
+	return m.projectCostFn(ctx, projectID, version)
 }
 
 func (m *mockBudgetService) CheckBudget(ctx context.Context, actorID string, projectID string, input domain.BudgetCheckInput) (*domain.BudgetCheckResult, error) {
@@ -197,39 +201,24 @@ func TestBudgetController_UpdateBudgetConfig_InvalidMode(t *testing.T) {
 func TestBudgetController_CalculateCost_Success(t *testing.T) {
 	t.Parallel()
 
-	calc := domain.NewCostCalculation(
-		180,
-		[]domain.EchelonEstimate{
-			domain.NewEchelonEstimate("echelon-1", "Обнаружение", []domain.EstimateLine{}, 80),
-		},
-		[]domain.TypeEstimate{
-			domain.NewTypeEstimate("radar", "radar", []domain.EstimateLine{}, 60),
-		},
-		[]domain.EstimateLine{
-			domain.NewEstimateLine("obj-1", "asset-1", "Mobile Radar", "echelon-1", "Обнаружение", "radar", "radar", 3, 20, 60),
-		},
-	)
-
-	ctrl := NewBudgetController(&mockBudgetService{
-		calcCostFn: func(_ context.Context, projectID string) (*domain.CostCalculation, error) {
-			return &calc, nil
-		},
-	})
-
-	ctx := newTestCtx("GET", "/api/v1/projects/cost?id=proj-1", nil)
+	price, _ := domain.ParseUnitMinor("2000000000")
+	line, _ := domain.NewFinancialLine("obj-1", "asset-1", "custom", "synthetic", "Module", 3, price, "template", "")
+	projection := domain.NewCostProjection(domain.NewCalculationIdentity("proj-1", 7, domain.CostCalculationV1, "digest", nil), []domain.FinancialLine{line}, map[string]string{"custom": "Custom"}, nil)
+	ctrl := NewBudgetController(&mockBudgetService{projectCostFn: func(_ context.Context, id string, version *int) (*domain.CostProjection, error) {
+		if id != "proj-1" || version == nil || *version != 7 {
+			t.Fatalf("wrong revision request: %s %v", id, version)
+		}
+		return projection, nil
+	}})
+	ctx := newTestCtx("GET", "/api/v1/projects/cost?projectId=proj-1&projectVersion=7", nil)
 	ctrl.CalculateCost(ctx)
-
 	if ctx.Response.StatusCode() != fasthttp.StatusOK {
-		t.Errorf("StatusCode = %d, want %d", ctx.Response.StatusCode(), fasthttp.StatusOK)
+		t.Fatalf("status=%d body=%s", ctx.Response.StatusCode(), ctx.Response.Body())
 	}
-
-	var resp CostCalculationDTO
-	parseResponse(t, ctx.Response.Body(), &resp)
-	if resp.TotalMln != 180 {
-		t.Errorf("TotalMln = %f, want 180", resp.TotalMln)
-	}
-	if len(resp.ByEchelon) != 1 {
-		t.Errorf("ByEchelon length = %d, want 1", len(resp.ByEchelon))
+	var response CostProjectionDTO
+	parseResponse(t, ctx.Response.Body(), &response)
+	if response.TotalMinor == nil || *response.TotalMinor != "6000000000" || response.Identity.ProjectVersion != 7 || len(response.ByLayer) != 1 {
+		t.Fatalf("unexpected projection: %+v", response)
 	}
 }
 

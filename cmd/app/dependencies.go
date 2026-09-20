@@ -10,11 +10,16 @@ import (
 	budgetInfra "github.com/fortis/backend/internal/modules/budget/infrastructure"
 	budgetUi "github.com/fortis/backend/internal/modules/budget/ui"
 	defenseAssetApp "github.com/fortis/backend/internal/modules/defense_asset/application"
+	defenseAssetDomain "github.com/fortis/backend/internal/modules/defense_asset/domain"
 	defenseAssetInfra "github.com/fortis/backend/internal/modules/defense_asset/infrastructure"
 	defenseAssetUi "github.com/fortis/backend/internal/modules/defense_asset/ui"
 	defenseApp "github.com/fortis/backend/internal/modules/defense_project/application"
 	defenseInfra "github.com/fortis/backend/internal/modules/defense_project/infrastructure"
 	defenseUi "github.com/fortis/backend/internal/modules/defense_project/ui"
+	demoApp "github.com/fortis/backend/internal/modules/demo_request/application"
+	demoDomain "github.com/fortis/backend/internal/modules/demo_request/domain"
+	demoInfra "github.com/fortis/backend/internal/modules/demo_request/infrastructure"
+	demoUi "github.com/fortis/backend/internal/modules/demo_request/ui"
 	enterpriseApp "github.com/fortis/backend/internal/modules/enterprise/application"
 	enterpriseInfra "github.com/fortis/backend/internal/modules/enterprise/infrastructure"
 	enterpriseUi "github.com/fortis/backend/internal/modules/enterprise/ui"
@@ -31,6 +36,11 @@ import (
 	"github.com/fortis/backend/internal/rdbms"
 	"go.uber.org/dig"
 )
+
+var publicAuthPaths = []string{
+	"^/_/[a-z]+$", "^/api/v1/auth/register$", "^/api/v1/auth/login$",
+	"^/api/v1/token_validate$", "^/api/v1/demo-requests$",
+}
 
 //go:cover off
 func (app *Application) provideDependencies() {
@@ -93,7 +103,9 @@ func (app *Application) provideDependencies() {
 	// DefenseAsset module
 	err = app.container.Provide(defenseAssetUi.NewDefenseAssetController)
 	processError(err)
-	err = app.container.Provide(defenseAssetApp.NewDefenseAssetService)
+	err = app.container.Provide(func(repo defenseAssetDomain.DefenseAssetRepositoryInterface, access enterpriseApp.AccessChecker, documents defenseAssetDomain.DocumentRepositoryInterface) *defenseAssetApp.DefenseAssetService {
+		return defenseAssetApp.NewDefenseAssetService(repo, access, documents)
+	})
 	processError(err)
 	err = app.container.Provide(func(service *defenseAssetApp.DefenseAssetService) defenseAssetUi.DefenseAssetServiceInterface {
 		return service
@@ -105,8 +117,14 @@ func (app *Application) provideDependencies() {
 	// DefenseAsset Document module
 	err = app.container.Provide(defenseAssetUi.NewDocumentController)
 	processError(err)
-	err = app.container.Provide(defenseAssetApp.NewDocumentService,
-		dig.As(new(defenseAssetUi.DocumentServiceInterface)))
+	err = app.container.Provide(func() config.Documents { return cnf.Documents })
+	processError(err)
+	err = app.container.Provide(func(repo defenseAssetDomain.DocumentRepositoryInterface, assets *defenseAssetApp.DefenseAssetService, cfg config.Documents) *defenseAssetApp.DocumentService {
+		return defenseAssetApp.NewDocumentService(repo, assets, defenseAssetApp.DocumentPipeline{
+			Storage: defenseAssetInfra.NewLocalDocumentStorage(defenseAssetInfra.DocumentStorageConfig{RootDir: cfg.RootDir, Enabled: cfg.Enabled}),
+			Scanner: defenseAssetInfra.NewClamAVScanner(defenseAssetInfra.ClamAVConfig{Executable: cfg.ScannerExecutable}),
+		})
+	}, dig.As(new(defenseAssetUi.DocumentServiceInterface)))
 	processError(err)
 	err = app.container.Provide(defenseAssetInfra.NewDocumentRepository)
 	processError(err)
@@ -118,7 +136,7 @@ func (app *Application) provideDependencies() {
 		dig.As(new(budgetUi.BudgetServiceInterface), new(reportApp.BudgetServiceInterface)))
 	processError(err)
 	err = app.container.Provide(budgetInfra.NewBudgetConfigRepository,
-		dig.As(new(budgetDomain.BudgetConfigRepositoryInterface)))
+		dig.As(new(budgetDomain.BudgetConfigRepositoryInterface), new(budgetDomain.CostProjectionRepositoryInterface)))
 	processError(err)
 
 	// Report module
@@ -138,14 +156,23 @@ func (app *Application) provideDependencies() {
 	}, dig.As(new(userUi.UserServiceInterface)))
 	processError(err)
 
+	// Demo requests: durable intake and outbox share the existing database.
+	err = app.container.Provide(demoInfra.NewRepository)
+	processError(err)
+	err = app.container.Provide(func(repo demoDomain.Repository) *demoApp.Service {
+		cfg := cnf.DemoRequests
+		notifier := demoInfra.NewSMTPNotifier(demoInfra.SMTPConfig{Address: cfg.SMTPAddress, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, From: cfg.SMTPFrom, To: cfg.SMTPTo})
+		return demoApp.NewService(repo, demoApp.Config{Enabled: cfg.Enabled, ConsentVersions: cfg.ConsentVersions}, notifier)
+	})
+	processError(err)
+	err = app.container.Provide(func(service *demoApp.Service) *demoUi.Controller {
+		return demoUi.NewController(service, demoUi.TransportConfig{AllowedOrigins: cnf.DemoRequests.AllowedOrigins, TrustedProxyCIDRs: cnf.DemoRequests.TrustedProxyCIDRs})
+	})
+	processError(err)
+
 	// Auth middleware
 	err = app.container.Provide(func(cfg config.Auth, users userUi.UserServiceInterface) *middleware.AuthRequired {
-		return middleware.NewAuthRequired(cfg.JWTSecret, []string{
-			"^/_/[a-z]+$",
-			"^/api/v1/auth/register$",
-			"^/api/v1/auth/login$",
-			"^/api/v1/token_validate$",
-		}, users)
+		return middleware.NewAuthRequired(cfg.JWTSecret, publicAuthPaths, users)
 	})
 	processError(err)
 }

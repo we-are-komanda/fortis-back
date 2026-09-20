@@ -3,25 +3,27 @@ package application
 import (
 	"context"
 	"errors"
-	"fmt"
-	"github.com/fortis/backend/internal/auth"
-	"time"
 
-	"github.com/google/uuid"
+	"github.com/fortis/backend/internal/auth"
 
 	"github.com/fortis/backend/internal/modules/defense_asset/domain"
 )
 
 // DocumentService — сервис для управления документами средства защиты.
 type DocumentService struct {
-	repo   domain.DocumentRepositoryInterface
-	assets *DefenseAssetService
+	repo     domain.DocumentRepositoryInterface
+	pipeline DocumentPipeline
+	assets   *DefenseAssetService
 }
 
 // NewDocumentService создаёт новый сервис документов.
-func NewDocumentService(repo domain.DocumentRepositoryInterface, assets *DefenseAssetService) *DocumentService {
+func NewDocumentService(repo domain.DocumentRepositoryInterface, assets *DefenseAssetService, pipeline ...DocumentPipeline) *DocumentService {
+	var p DocumentPipeline
+	if len(pipeline) > 0 {
+		p = pipeline[0]
+	}
 	return &DocumentService{
-		repo: repo, assets: assets,
+		repo: repo, assets: assets, pipeline: p,
 	}
 }
 
@@ -41,31 +43,7 @@ func (s *DocumentService) Create(ctx context.Context, userID string, input Creat
 	if _, err := s.assets.GetForMutation(ctx, userID, input.AssetID); err != nil {
 		return nil, err
 	}
-	input.OwnerID = &userID
-	now := time.Now().UTC()
-	id := uuid.New().String()
-
-	doc, err := domain.NewDocument(
-		id,
-		input.AssetID,
-		input.Name,
-		input.MimeType,
-		input.StorageKey,
-		input.DownloadURL,
-		input.SizeBytes,
-		input.OwnerID,
-		now,
-		now,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := s.repo.Save(ctx, doc); err != nil {
-		return nil, fmt.Errorf("save document: %w", err)
-	}
-
-	return doc, nil
+	return nil, domain.ErrDocumentUploadRequired
 }
 
 // GetByID возвращает документ по ID.
@@ -101,5 +79,8 @@ func (s *DocumentService) Delete(ctx context.Context, userID, id string) error {
 	if _, err := s.assets.GetForMutation(ctx, userID, doc.AssetID()); err != nil {
 		return err
 	}
-	return s.repo.Delete(ctx, id)
+	if repo, ok := s.repo.(domain.DocumentWriteRepository); ok {
+		return repo.DeleteDocument(ctx, id, userID)
+	}
+	return domain.ErrDocumentUnavailable
 }

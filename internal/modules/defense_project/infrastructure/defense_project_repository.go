@@ -20,41 +20,16 @@ func NewDefenseProjectRepository(executor rdbms.Executor) domain.DefenseProjectR
 }
 
 func (r *DefenseProjectRepository) Save(ctx context.Context, project *domain.DefenseProject) error {
-	model, err := ToModel(project)
-	if err != nil {
+	var existing DefenseProjectModel
+	err := r.executor.WithContext(ctx).Where("id = ?", project.ProjectID()).First(&existing).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
-
-	db := r.executor.WithContext(ctx)
-
-	// Upsert: попытка обновить существующую запись или создать новую
-	var existing DefenseProjectModel
-	result := db.Where("id = ?", model.ID).First(&existing)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			// Создать новую запись
-			return db.Create(model).Error
-		}
-		return result.Error
+	saved, err := r.Commit(ctx, project, domain.ProjectWrite{Create: errors.Is(err, gorm.ErrRecordNotFound)})
+	if err == nil {
+		*project = *saved
 	}
-
-	// Обновить существующую с проверкой версии (optimistic locking)
-	result = db.Model(&DefenseProjectModel{}).Where("id = ? AND version = ?", model.ID, model.Version).
-		Updates(map[string]interface{}{
-			"name":          model.Name,
-			"enterprise_id": nullableEnterpriseID(model.EnterpriseID),
-			"project_data":  model.ProjectData,
-			"version":       model.Version + 1,
-			"updated_at":    model.UpdatedAt,
-		})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return domain.ErrVersionConflict
-	}
-	project.SetVersion(model.Version + 1)
-	return nil
+	return err
 }
 
 func nullableEnterpriseID(enterpriseID string) interface{} {

@@ -7,19 +7,40 @@ import (
 	"log/slog"
 )
 
+type Documents struct {
+	Enabled           bool   `yaml:"enabled"`
+	RootDir           string `yaml:"root_dir" envconfig:"root_dir"`
+	ScannerExecutable string `yaml:"scanner_executable" envconfig:"scanner_executable"`
+}
+
 type Config struct {
-	WorkMode    WorkMode `yaml:"work_mode" envconfig:"work_mode"`
-	Postgres    Postgres `envconfig:"db"`
-	Access      Access   `envconfig:"access"`
-	Cors        Cors     `yaml:"cors" envconfig:"cors"`
-	Auth        Auth     `yaml:"auth" envconfig:"auth"`
-	Environment string
+	Documents    Documents    `yaml:"documents" envconfig:"documents"`
+	WorkMode     WorkMode     `yaml:"work_mode" envconfig:"work_mode"`
+	Postgres     Postgres     `envconfig:"db"`
+	Access       Access       `envconfig:"access"`
+	Cors         Cors         `yaml:"cors" envconfig:"cors"`
+	Auth         Auth         `yaml:"auth" envconfig:"auth"`
+	DemoRequests DemoRequests `yaml:"demo_requests" envconfig:"demo"`
+	Environment  string
 }
 
 func NewConfig(env string) *Config {
 	return &Config{
 		Environment: env,
 	}
+}
+
+// Disabled by default. Recipient and credentials are server configuration only.
+type DemoRequests struct {
+	Enabled           bool     `yaml:"enabled"`
+	ConsentVersions   []string `yaml:"consent_versions" envconfig:"consent_versions"`
+	AllowedOrigins    []string `yaml:"allowed_origins" envconfig:"allowed_origins"`
+	TrustedProxyCIDRs []string `yaml:"trusted_proxy_cidrs" envconfig:"trusted_proxy_cidrs"`
+	SMTPAddress       string   `yaml:"smtp_address" envconfig:"smtp_address"`
+	SMTPUsername      string   `yaml:"smtp_username" envconfig:"smtp_username"`
+	SMTPPassword      string   `yaml:"-" envconfig:"smtp_password"`
+	SMTPFrom          string   `yaml:"smtp_from" envconfig:"smtp_from"`
+	SMTPTo            string   `yaml:"smtp_to" envconfig:"smtp_to"`
 }
 
 type WorkMode string

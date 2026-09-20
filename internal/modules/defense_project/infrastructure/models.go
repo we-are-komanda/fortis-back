@@ -5,6 +5,7 @@ import (
 	"time"
 
 	defenseAssetDomain "github.com/fortis/backend/internal/modules/defense_asset/domain"
+	"github.com/fortis/backend/internal/modules/defense_project/document"
 	"github.com/fortis/backend/internal/modules/defense_project/domain"
 )
 
@@ -26,20 +27,20 @@ func (DefenseProjectModel) TableName() string {
 // projectDataJSON — промежуточная структура для сериализации/десериализации JSONB.
 // Содержит все поля DefenseProject, включая schemaVersion.
 type projectDataJSON struct {
-	SchemaVersion    int                              `json:"schemaVersion"`
-	ProjectID        string                           `json:"projectId"`
-	ProjectName      string                           `json:"projectName"`
-	BaseObject       protectedObjectJSON              `json:"baseObject"`
-	Layers           []editableDefenseLayerJSON       `json:"layers"`
-	AssetLibrary     []defenseAssetJSON               `json:"assetLibrary"`
-	PlacedObjects    []placedDefenseObjectJSON        `json:"placedObjects"`
-	ActiveLayerID    *string                          `json:"activeLayerId,omitempty"`
-	SelectedAssetID  *string                          `json:"selectedAssetId,omitempty"`
-	SelectedObjectID *string                          `json:"selectedObjectId,omitempty"`
-	Mode             string                           `json:"mode"`
-	Source           string                           `json:"source,omitempty"`
-	BasePresetID     *string                          `json:"basePresetId,omitempty"`
-	UpdatedAt        string                           `json:"updatedAt"`
+	SchemaVersion    int                        `json:"schemaVersion"`
+	ProjectID        string                     `json:"projectId"`
+	ProjectName      string                     `json:"projectName"`
+	BaseObject       protectedObjectJSON        `json:"baseObject"`
+	Layers           []editableDefenseLayerJSON `json:"layers"`
+	AssetLibrary     []defenseAssetJSON         `json:"assetLibrary"`
+	PlacedObjects    []placedDefenseObjectJSON  `json:"placedObjects"`
+	ActiveLayerID    *string                    `json:"activeLayerId,omitempty"`
+	SelectedAssetID  *string                    `json:"selectedAssetId,omitempty"`
+	SelectedObjectID *string                    `json:"selectedObjectId,omitempty"`
+	Mode             string                     `json:"mode"`
+	Source           string                     `json:"source,omitempty"`
+	BasePresetID     *string                    `json:"basePresetId,omitempty"`
+	UpdatedAt        string                     `json:"updatedAt"`
 }
 
 type coordinatesJSON struct {
@@ -63,74 +64,74 @@ type layerGeometryJSON struct {
 }
 
 type editableDefenseLayerJSON struct {
-	ID                 string             `json:"id"`
-	Name               string             `json:"name"`
-	Code               string             `json:"code"`
-	Description        *string            `json:"description,omitempty"`
-	Order              int                `json:"order"`
-	DistanceFromObjMin *float64           `json:"distanceFromObjectMin,omitempty"`
-	DistanceFromObjMax *float64           `json:"distanceFromObjectMax,omitempty"`
-	GeometryType       string             `json:"geometryType"`
-	Geometry           layerGeometryJSON  `json:"geometry"`
-	Color              *string            `json:"color,omitempty"`
-	Opacity            *float64           `json:"opacity,omitempty"`
-	IsActive           bool               `json:"isActive"`
-	IsVisible          *bool              `json:"isVisible,omitempty"`
-	IsLocked           *bool              `json:"isLocked,omitempty"`
+	ID                 string            `json:"id"`
+	Name               string            `json:"name"`
+	Code               string            `json:"code"`
+	Description        *string           `json:"description,omitempty"`
+	Order              int               `json:"order"`
+	DistanceFromObjMin *float64          `json:"distanceFromObjectMin,omitempty"`
+	DistanceFromObjMax *float64          `json:"distanceFromObjectMax,omitempty"`
+	GeometryType       string            `json:"geometryType"`
+	Geometry           layerGeometryJSON `json:"geometry"`
+	Color              *string           `json:"color,omitempty"`
+	Opacity            *float64          `json:"opacity,omitempty"`
+	IsActive           bool              `json:"isActive"`
+	IsVisible          *bool             `json:"isVisible,omitempty"`
+	IsLocked           *bool             `json:"isLocked,omitempty"`
 }
 
 type defenseAssetJSON struct {
-	ID                    string                                      `json:"id"`
-	Name                  string                                      `json:"name"`
-	ShortName             *string                                     `json:"shortName,omitempty"`
-	Description           *string                                     `json:"description,omitempty"`
-	Category              string                                      `json:"category"`
-	Roles                 []string                                    `json:"roles"`
-	PricePerUnitMln       *float64                                    `json:"pricePerUnitMln,omitempty"`
-	Currency              string                                      `json:"currency"`
-	UnitLabel             string                                      `json:"unitLabel"`
-	CompatibleLayerTypes  []string                                    `json:"compatibleLayerTypes,omitempty"`
-	RecommendedLayerCodes []string                                    `json:"recommendedLayerCodes,omitempty"`
-	CompatibleLayerCodes  []string                                    `json:"compatibleLayerCodes,omitempty"`
-	IncompatibleLayerCodes []string                                   `json:"incompatibleLayerCodes,omitempty"`
-	ProtectionType        string                                      `json:"protectionType,omitempty"`
-	MinEffectiveDistance  *float64                                    `json:"minEffectiveDistance,omitempty"`
-	MaxEffectiveDistance  *float64                                    `json:"maxEffectiveDistance,omitempty"`
-	CoverageType          string                                      `json:"coverageType"`
-	CoverageRadius        *float64                                    `json:"coverageRadius,omitempty"`
-	CoverageAngle         *float64                                    `json:"coverageAngle,omitempty"`
-	DeploymentType        string                                      `json:"deploymentType"`
-	PlacementType         string                                      `json:"placementType"`
-	IconURL               *string                                     `json:"iconUrl,omitempty"`
-	ModelURL              *string                                     `json:"modelUrl,omitempty"`
-	Score                 *int                                        `json:"score,omitempty"`
-	Priority              *string                                     `json:"priority,omitempty"`
-	CompoundProfile       *defenseAssetDomain.DefenseAssetCompoundProfile `json:"compoundProfile,omitempty"`
-	Tags                  []string                                    `json:"tags,omitempty"`
-	LegacyItemID          *string                                     `json:"legacyItemId,omitempty"`
-	CalculatorAssetID     *string                                     `json:"calculatorAssetId,omitempty"`
-	MapCatalogGroupIDs    []string                                    `json:"mapCatalogGroupIds,omitempty"`
+	ID                     string                                          `json:"id"`
+	Name                   string                                          `json:"name"`
+	ShortName              *string                                         `json:"shortName,omitempty"`
+	Description            *string                                         `json:"description,omitempty"`
+	Category               string                                          `json:"category"`
+	Roles                  []string                                        `json:"roles"`
+	PricePerUnitMln        *float64                                        `json:"pricePerUnitMln,omitempty"`
+	Currency               string                                          `json:"currency"`
+	UnitLabel              string                                          `json:"unitLabel"`
+	CompatibleLayerTypes   []string                                        `json:"compatibleLayerTypes,omitempty"`
+	RecommendedLayerCodes  []string                                        `json:"recommendedLayerCodes,omitempty"`
+	CompatibleLayerCodes   []string                                        `json:"compatibleLayerCodes,omitempty"`
+	IncompatibleLayerCodes []string                                        `json:"incompatibleLayerCodes,omitempty"`
+	ProtectionType         string                                          `json:"protectionType,omitempty"`
+	MinEffectiveDistance   *float64                                        `json:"minEffectiveDistance,omitempty"`
+	MaxEffectiveDistance   *float64                                        `json:"maxEffectiveDistance,omitempty"`
+	CoverageType           string                                          `json:"coverageType"`
+	CoverageRadius         *float64                                        `json:"coverageRadius,omitempty"`
+	CoverageAngle          *float64                                        `json:"coverageAngle,omitempty"`
+	DeploymentType         string                                          `json:"deploymentType"`
+	PlacementType          string                                          `json:"placementType"`
+	IconURL                *string                                         `json:"iconUrl,omitempty"`
+	ModelURL               *string                                         `json:"modelUrl,omitempty"`
+	Score                  *int                                            `json:"score,omitempty"`
+	Priority               *string                                         `json:"priority,omitempty"`
+	CompoundProfile        *defenseAssetDomain.DefenseAssetCompoundProfile `json:"compoundProfile,omitempty"`
+	Tags                   []string                                        `json:"tags,omitempty"`
+	LegacyItemID           *string                                         `json:"legacyItemId,omitempty"`
+	CalculatorAssetID      *string                                         `json:"calculatorAssetId,omitempty"`
+	MapCatalogGroupIDs     []string                                        `json:"mapCatalogGroupIds,omitempty"`
 }
 
 type placedDefenseObjectJSON struct {
-	ID                    string           `json:"id"`
-	AssetID               string           `json:"assetId"`
-	LayerID               string           `json:"layerId"`
-	Name                  *string          `json:"name,omitempty"`
-	Coordinates           coordinatesJSON  `json:"coordinates"`
-	Rotation              *float64         `json:"rotation,omitempty"`
-	Scale                 *float64         `json:"scale,omitempty"`
-	Quantity              int              `json:"quantity"`
-	Status                string           `json:"status"`
-	CustomPricePerUnitMln *float64         `json:"customPricePerUnitMln,omitempty"`
-	CustomCoverageRadius  *float64         `json:"customCoverageRadius,omitempty"`
-	CustomCoverageAngle   *float64         `json:"customCoverageAngle,omitempty"`
-	HasGeometryConflict   bool             `json:"hasGeometryConflict"`
-	HasCoverageConflict   bool             `json:"hasCoverageConflict"`
-	HasTerrainConflict    bool             `json:"hasTerrainConflict"`
-	Notes                 *string          `json:"notes,omitempty"`
-	CreatedAt             string           `json:"createdAt"`
-	UpdatedAt             string           `json:"updatedAt"`
+	ID                    string          `json:"id"`
+	AssetID               string          `json:"assetId"`
+	LayerID               string          `json:"layerId"`
+	Name                  *string         `json:"name,omitempty"`
+	Coordinates           coordinatesJSON `json:"coordinates"`
+	Rotation              *float64        `json:"rotation,omitempty"`
+	Scale                 *float64        `json:"scale,omitempty"`
+	Quantity              int             `json:"quantity"`
+	Status                string          `json:"status"`
+	CustomPricePerUnitMln *float64        `json:"customPricePerUnitMln,omitempty"`
+	CustomCoverageRadius  *float64        `json:"customCoverageRadius,omitempty"`
+	CustomCoverageAngle   *float64        `json:"customCoverageAngle,omitempty"`
+	HasGeometryConflict   bool            `json:"hasGeometryConflict"`
+	HasCoverageConflict   bool            `json:"hasCoverageConflict"`
+	HasTerrainConflict    bool            `json:"hasTerrainConflict"`
+	Notes                 *string         `json:"notes,omitempty"`
+	CreatedAt             string          `json:"createdAt"`
+	UpdatedAt             string          `json:"updatedAt"`
 }
 
 // ToDomain преобразует GORM-модель в доменный агрегат.
@@ -139,19 +140,34 @@ func (m *DefenseProjectModel) ToDomain() (*domain.DefenseProject, error) {
 	if err := json.Unmarshal([]byte(m.ProjectData), &data); err != nil {
 		return nil, err
 	}
+	if data.SchemaVersion != domain.SchemaVersion {
+		return nil, domain.ErrInvalidSchemaVersion
+	}
+	if data.ProjectName == "" {
+		return nil, domain.ErrInvalidProjectData
+	}
+	data.ProjectID = m.ID
 
 	project := jsonToDomain(data)
 	project.SetProjectID(m.ID)
 	project.SetName(m.Name)
 	project.SetEnterpriseID(m.EnterpriseID)
 	project.SetVersion(m.Version)
+	project.SetDocument(m.ProjectData)
+	if project.UpdatedAt().IsZero() {
+		project.SetUpdatedAt(m.UpdatedAt)
+	}
 	return project, nil
 }
 
 // ToModel преобразует доменный агрегат в GORM-модель.
 func ToModel(p *domain.DefenseProject) (*DefenseProjectModel, error) {
 	data := domainToJSON(p)
-	raw, err := json.Marshal(data)
+	raw, err := document.Encode(p.Document(), data, map[string]any{
+		"schemaVersion": p.SchemaVersion(), "projectId": p.ProjectID(), "name": p.Name(),
+		"enterpriseId": p.EnterpriseID(), "version": p.Version(), "projectName": p.ProjectName(),
+		"updatedAt": p.UpdatedAt().Format(time.RFC3339Nano),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -225,6 +241,12 @@ func jsonToDomain(data projectDataJSON) *domain.DefenseProject {
 	}
 
 	updatedAt, _ := time.Parse(time.RFC3339Nano, data.UpdatedAt)
+	if data.Mode == "" {
+		data.Mode = string(domain.DefenseProjectModeView)
+	}
+	if data.Source == "" {
+		data.Source = string(domain.DefenseProjectSourceCustom)
+	}
 
 	//nolint:errcheck // валидация уже пройдена на уровне сервиса
 	// name и enterpriseID передаём пустыми — они устанавливаются из колонок GORM в ToDomain.
@@ -300,11 +322,28 @@ func jsonToLayer(l editableDefenseLayerJSON) domain.EditableDefenseLayer {
 func jsonToGeometry(g layerGeometryJSON) domain.LayerGeometry {
 	switch domain.LayerGeometryType(g.Type) {
 	case domain.LayerGeometryCircle:
-		center := domain.NewCoordinates(g.Center.Lat, g.Center.Lng)
-		return domain.NewCircleGeometry(center, *g.RadiusM)
+		var center domain.Coordinates
+		if g.Center != nil {
+			center = domain.NewCoordinates(g.Center.Lat, g.Center.Lng)
+		}
+		radius := 0.0
+		if g.RadiusM != nil {
+			radius = *g.RadiusM
+		}
+		return domain.NewCircleGeometry(center, radius)
 	case domain.LayerGeometryRing:
-		center := domain.NewCoordinates(g.Center.Lat, g.Center.Lng)
-		return domain.NewRingGeometry(center, *g.MinRadiusM, *g.MaxRadiusM)
+		var center domain.Coordinates
+		if g.Center != nil {
+			center = domain.NewCoordinates(g.Center.Lat, g.Center.Lng)
+		}
+		minRadius, maxRadius := 0.0, 0.0
+		if g.MinRadiusM != nil {
+			minRadius = *g.MinRadiusM
+		}
+		if g.MaxRadiusM != nil {
+			maxRadius = *g.MaxRadiusM
+		}
+		return domain.NewRingGeometry(center, minRadius, maxRadius)
 	case domain.LayerGeometryPolygon:
 		pts := make([]domain.Coordinates, len(g.Points))
 		for i, p := range g.Points {
@@ -342,32 +381,32 @@ func assetToJSON(a domain.DefenseAsset) defenseAssetJSON {
 	return defenseAssetJSON{
 		ID: a.ID(), Name: a.Name(),
 		ShortName: a.ShortName(), Description: a.Description(),
-		Category:              string(a.Category()),
-		Roles:                 roles,
-		PricePerUnitMln:       a.PricePerUnitMln(),
-		Currency:              a.Currency(),
-		UnitLabel:             a.UnitLabel(),
-		CompatibleLayerTypes:  compatTypes,
-		RecommendedLayerCodes: a.RecommendedLayerCodes(),
-		CompatibleLayerCodes:  a.CompatibleLayerCodes(),
+		Category:               string(a.Category()),
+		Roles:                  roles,
+		PricePerUnitMln:        a.PricePerUnitMln(),
+		Currency:               a.Currency(),
+		UnitLabel:              a.UnitLabel(),
+		CompatibleLayerTypes:   compatTypes,
+		RecommendedLayerCodes:  a.RecommendedLayerCodes(),
+		CompatibleLayerCodes:   a.CompatibleLayerCodes(),
 		IncompatibleLayerCodes: a.IncompatibleLayerCodes(),
-		ProtectionType:        a.ProtectionType(),
-		MinEffectiveDistance:  a.MinEffectiveDistance(),
-		MaxEffectiveDistance:  a.MaxEffectiveDistance(),
-		CoverageType:          string(a.CoverageType()),
-		CoverageRadius:        a.CoverageRadius(),
-		CoverageAngle:         a.CoverageAngle(),
-		DeploymentType:        string(a.DeploymentType()),
-		PlacementType:         string(a.PlacementType()),
-		IconURL:               a.IconURL(),
-		ModelURL:              a.ModelURL(),
-		Score:                 a.Score(),
-		Priority:              priority,
-		CompoundProfile:       a.CompoundProfile(),
-		Tags:                  a.Tags(),
-		LegacyItemID:          a.LegacyItemID(),
-		CalculatorAssetID:     a.CalculatorAssetID(),
-		MapCatalogGroupIDs:    a.MapCatalogGroupIDs(),
+		ProtectionType:         a.ProtectionType(),
+		MinEffectiveDistance:   a.MinEffectiveDistance(),
+		MaxEffectiveDistance:   a.MaxEffectiveDistance(),
+		CoverageType:           string(a.CoverageType()),
+		CoverageRadius:         a.CoverageRadius(),
+		CoverageAngle:          a.CoverageAngle(),
+		DeploymentType:         string(a.DeploymentType()),
+		PlacementType:          string(a.PlacementType()),
+		IconURL:                a.IconURL(),
+		ModelURL:               a.ModelURL(),
+		Score:                  a.Score(),
+		Priority:               priority,
+		CompoundProfile:        a.CompoundProfile(),
+		Tags:                   a.Tags(),
+		LegacyItemID:           a.LegacyItemID(),
+		CalculatorAssetID:      a.CalculatorAssetID(),
+		MapCatalogGroupIDs:     a.MapCatalogGroupIDs(),
 	}
 }
 
@@ -475,3 +514,27 @@ func boolOrFalse(b *bool) bool {
 	}
 	return *b
 }
+
+type ProjectRevisionModel struct {
+	ProjectID              string  `gorm:"primaryKey;type:uuid"`
+	Version                int     `gorm:"primaryKey"`
+	SnapshotJSON           string  `gorm:"type:jsonb;not null"`
+	SnapshotDigest         string  `gorm:"not null"`
+	CreatedBy              *string `gorm:"type:uuid"`
+	CreatedAt              time.Time
+	CostCalculationVersion string
+}
+
+func (ProjectRevisionModel) TableName() string { return "project_revisions" }
+
+type ProjectIdempotencyModel struct {
+	ActorID        string `gorm:"primaryKey;type:uuid"`
+	Operation      string `gorm:"primaryKey"`
+	Key            string `gorm:"primaryKey;column:idempotency_key"`
+	PayloadDigest  string
+	ProjectID      *string `gorm:"type:uuid"`
+	ProjectVersion int
+	ExpiresAt      time.Time
+}
+
+func (ProjectIdempotencyModel) TableName() string { return "project_idempotency" }

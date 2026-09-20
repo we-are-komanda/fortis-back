@@ -50,12 +50,85 @@ type UpdateBudgetRequest struct {
 // ---- Cost Calculation DTOs ----
 
 // CostQuery DTO query-параметров для расчёта стоимости.
-// swagger:parameters CalculateCost
+// swagger:parameters calculateCost
 type CostQuery struct {
-	// ID проекта
-	// Required: true
+	// ID проекта (предпочтительный параметр).
+	// In: query
+	ProjectID string `json:"projectId"`
+	// Совместимый alias projectId; конфликтующие значения отклоняются.
 	// In: query
 	ID string `json:"id"`
+	// Версия сохранённой ревизии; без параметра читается текущая.
+	// In: query
+	// Minimum: 1
+	ProjectVersion *int `json:"projectVersion,omitempty"`
+}
+
+type CalculationIdentityDTO struct {
+	ProjectID          string            `json:"projectId"`
+	ProjectVersion     int               `json:"projectVersion"`
+	CalculationVersion string            `json:"calculationVersion"`
+	InputDataVersions  map[string]string `json:"inputDataVersions"`
+	SnapshotDigest     string            `json:"snapshotDigest"`
+}
+type FinancialLineDTO struct {
+	ObjectID       string                 `json:"objectId"`
+	AssetID        string                 `json:"assetId"`
+	LayerID        string                 `json:"layerId"`
+	Category       string                 `json:"category"`
+	Name           string                 `json:"name"`
+	Quantity       int                    `json:"quantity"`
+	UnitPriceMinor *string                `json:"unitPriceMinor"`
+	LineTotalMinor *string                `json:"lineTotalMinor"`
+	PriceSource    string                 `json:"priceSource"`
+	Provenance     *CostDataProvenanceDTO `json:"provenance"`
+}
+type CostDataProvenanceDTO struct {
+	SourceLabel            string  `json:"sourceLabel"`
+	SourceDocumentID       *string `json:"sourceDocumentId"`
+	SourceURL              *string `json:"sourceUrl"`
+	SourceDate             *string `json:"sourceDate"`
+	RecordedAt             string  `json:"recordedAt"`
+	RecordedBy             string  `json:"recordedBy"`
+	Quality                string  `json:"quality"`
+	Revision               string  `json:"revision"`
+	SourceDocumentRevision *string `json:"sourceDocumentRevision,omitempty"`
+	SourceDocumentChecksum *string `json:"sourceDocumentChecksum,omitempty"`
+}
+type CostGroupDTO struct {
+	ID                 string  `json:"id"`
+	Name               string  `json:"name"`
+	ObjectCount        int     `json:"objectCount"`
+	UnitCount          int     `json:"unitCount"`
+	KnownSubtotalMinor string  `json:"knownSubtotalMinor"`
+	TotalMinor         *string `json:"totalMinor"`
+}
+type CostIssueDTO struct {
+	Code      string   `json:"code"`
+	Severity  string   `json:"severity"`
+	ObjectIDs []string `json:"objectIds"`
+	Message   string   `json:"message"`
+}
+
+// CostProjectionDTO — точная стоимость сохранённой ревизии в копейках RUB.
+// swagger:model CostProjection
+type CostProjectionDTO struct {
+	Identity              CalculationIdentityDTO `json:"identity"`
+	Currency              string                 `json:"currency"`
+	Lines                 []FinancialLineDTO     `json:"lines"`
+	ByLayer               []CostGroupDTO         `json:"byLayer"`
+	ByType                []CostGroupDTO         `json:"byType"`
+	KnownSubtotalMinor    string                 `json:"knownSubtotalMinor"`
+	TotalMinor            *string                `json:"totalMinor"`
+	IsComplete            bool                   `json:"isComplete"`
+	UnknownPriceObjectIDs []string               `json:"unknownPriceObjectIds"`
+	Warnings              []CostIssueDTO         `json:"warnings"`
+}
+
+// swagger:response CostProjectionResponse
+type CostProjectionResponse struct {
+	// In: body
+	Body CostProjectionDTO
 }
 
 // EstimateLineDTO DTO строки расчёта стоимости.
@@ -187,50 +260,50 @@ type ConfigSnapshotDTO struct {
 
 // StructuralProfileDTO — структурный профиль конфигурации.
 type StructuralProfileDTO struct {
-	ObjectCount     int                `json:"objectCount"`
-	UnitCount       int                `json:"unitCount"`
-	EchelonCount    int                `json:"echelonCount"`
-	CategoryCount   int                `json:"categoryCount"`
-	ConflictCount   int                `json:"conflictCount"`
-	CoveredObjCount int                `json:"coveredObjCount"`
-	TotalMln        float64            `json:"totalMln"`
+	ObjectCount     int                 `json:"objectCount"`
+	UnitCount       int                 `json:"unitCount"`
+	EchelonCount    int                 `json:"echelonCount"`
+	CategoryCount   int                 `json:"categoryCount"`
+	ConflictCount   int                 `json:"conflictCount"`
+	CoveredObjCount int                 `json:"coveredObjCount"`
+	TotalMln        float64             `json:"totalMln"`
 	ByEchelon       []EchelonProfileDTO `json:"byEchelon"`
 }
 
 // EchelonProfileDTO — профиль одного эшелона.
 type EchelonProfileDTO struct {
-	LayerID        string `json:"layerId"`
-	LayerCode      string `json:"layerCode"`
-	LayerName      string `json:"layerName"`
-	ObjectCount    int    `json:"objectCount"`
-	UnitCount      int    `json:"unitCount"`
-	CategoryCount  int    `json:"categoryCount"`
-	ConflictCount  int    `json:"conflictCount"`
-	CoveredObjCount int   `json:"coveredObjCount"`
+	LayerID         string `json:"layerId"`
+	LayerCode       string `json:"layerCode"`
+	LayerName       string `json:"layerName"`
+	ObjectCount     int    `json:"objectCount"`
+	UnitCount       int    `json:"unitCount"`
+	CategoryCount   int    `json:"categoryCount"`
+	ConflictCount   int    `json:"conflictCount"`
+	CoveredObjCount int    `json:"coveredObjCount"`
 }
 
 // ConfigDiffDTO — разница между двумя конфигурациями.
 type ConfigDiffDTO struct {
-	ObjectCountDelta     int            `json:"objectCountDelta"`
-	UnitCountDelta       int            `json:"unitCountDelta"`
-	EchelonCountDelta    int            `json:"echelonCountDelta"`
-	CategoryCountDelta   int            `json:"categoryCountDelta"`
-	ConflictCountDelta   int            `json:"conflictCountDelta"`
-	CoveredObjCountDelta int            `json:"coveredObjCountDelta"`
-	CostDeltaMln         float64        `json:"costDeltaMln"`
+	ObjectCountDelta     int              `json:"objectCountDelta"`
+	UnitCountDelta       int              `json:"unitCountDelta"`
+	EchelonCountDelta    int              `json:"echelonCountDelta"`
+	CategoryCountDelta   int              `json:"categoryCountDelta"`
+	ConflictCountDelta   int              `json:"conflictCountDelta"`
+	CoveredObjCountDelta int              `json:"coveredObjCountDelta"`
+	CostDeltaMln         float64          `json:"costDeltaMln"`
 	ByEchelon            []EchelonDiffDTO `json:"byEchelon"`
 }
 
 // EchelonDiffDTO — разница по одному эшелону.
 type EchelonDiffDTO struct {
-	LayerID           string `json:"layerId"`
-	LayerCode         string `json:"layerCode"`
-	LayerName         string `json:"layerName"`
-	ObjectCountDelta  int    `json:"objectCountDelta"`
-	UnitCountDelta    int    `json:"unitCountDelta"`
-	CategoryCountDelta int   `json:"categoryCountDelta"`
-	ConflictCountDelta int   `json:"conflictCountDelta"`
-	CoveredObjDelta   int    `json:"coveredObjDelta"`
+	LayerID            string `json:"layerId"`
+	LayerCode          string `json:"layerCode"`
+	LayerName          string `json:"layerName"`
+	ObjectCountDelta   int    `json:"objectCountDelta"`
+	UnitCountDelta     int    `json:"unitCountDelta"`
+	CategoryCountDelta int    `json:"categoryCountDelta"`
+	ConflictCountDelta int    `json:"conflictCountDelta"`
+	CoveredObjDelta    int    `json:"coveredObjDelta"`
 }
 
 // BudgetCheckResponse DTO результата проверки бюджета.

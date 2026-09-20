@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 
 	"github.com/valyala/fasthttp"
 
+	"github.com/fortis/backend/internal/audit"
 	"github.com/fortis/backend/internal/modules/budget/domain"
+	projectDomain "github.com/fortis/backend/internal/modules/defense_project/domain"
 	"github.com/fortis/backend/pkg/handlers"
 )
 
@@ -16,6 +19,7 @@ type BudgetServiceInterface interface {
 	GetBudgetConfig(ctx context.Context, actorID string, projectID string) (*domain.BudgetConfig, error)
 	UpdateBudgetConfig(ctx context.Context, actorID string, projectID string, mode domain.BudgetMode, amountMln float64) error
 	CalculateCost(ctx context.Context, actorID string, projectID string) (*domain.CostCalculation, error)
+	ProjectCost(ctx context.Context, actorID string, projectID string, version *int) (*domain.CostProjection, error)
 	CheckBudget(ctx context.Context, actorID string, projectID string, input domain.BudgetCheckInput) (*domain.BudgetCheckResult, error)
 	CompareConfigs(ctx context.Context, actorID string, projectID1, projectID2 string) (*domain.ConfigComparison, error)
 }
@@ -157,27 +161,54 @@ func (c *BudgetController) UpdateBudgetConfig(ctx *fasthttp.RequestCtx) {
 //
 // Responses:
 //
-//	200: CostCalculationResponse
+//	200: CostProjectionResponse
 //	400: description: Bad Request — не указан ID проекта
 //	404: description: Not Found — проект не найден
 //	500: description: Internal Server Error
 func (c *BudgetController) CalculateCost(ctx *fasthttp.RequestCtx) {
-	projectID := string(ctx.QueryArgs().Peek("id"))
+	projectID := string(ctx.QueryArgs().Peek("projectId"))
+	alias := string(ctx.QueryArgs().Peek("id"))
+	if projectID != "" && alias != "" && projectID != alias {
+		costError(ctx, 400, "validation_error", "projectId and id disagree", nil)
+		return
+	}
+	if projectID == "" {
+		projectID = alias
+	}
 	if projectID == "" {
 		handlers.ErrorHandler(ctx, "validation_error", "id query parameter is required", &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		return
 	}
 
-	calc, err := c.service.CalculateCost(ctx, handlers.ActorID(ctx), projectID)
+	var version *int
+	if raw := string(ctx.QueryArgs().Peek("projectVersion")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n <= 0 {
+			costError(ctx, 400, "version_required", "projectVersion must be positive", nil)
+			return
+		}
+		version = &n
+	}
+	calc, err := c.service.ProjectCost(ctx, handlers.ActorID(ctx), projectID, version)
 	if err != nil {
 		if handlers.AuthorizationError(ctx, err) {
 			return
 		}
-		handlers.ErrorHandler(ctx, "calculation_error", "failed to calculate cost", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
+		var invalid *domain.CostValidationError
+		switch {
+		case errors.As(err, &invalid):
+			costError(ctx, 400, invalid.Code, invalid.Message, map[string]any{"field": invalid.Field, "objectIds": invalid.ObjectIDs})
+		case errors.Is(err, projectDomain.ErrRevisionNotFound):
+			costError(ctx, 404, "revision_not_found", "Project revision not found", nil)
+		case errors.Is(err, domain.ErrUnsupportedCalculationVersion):
+			costError(ctx, 503, "unsupported_calculation_version", "Frozen calculation version is unavailable", nil)
+		default:
+			costError(ctx, 500, "calculation_error", "Failed to calculate project cost", nil)
+		}
 		return
 	}
 
-	resp := costCalculationToDTO(calc)
+	resp := costProjectionToDTO(calc)
 	respJSON, err := json.Marshal(resp)
 	if err != nil {
 		handlers.ErrorHandler(ctx, "internal_error", "failed to marshal response", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
@@ -185,6 +216,18 @@ func (c *BudgetController) CalculateCost(ctx *fasthttp.RequestCtx) {
 	}
 
 	ctx.SetBody(respJSON)
+}
+
+func costError(ctx *fasthttp.RequestCtx, status int, code, message string, details map[string]any) {
+	requestID := audit.RequestID(ctx)
+	ctx.Response.Header.Set("X-Request-ID", requestID)
+	errorBody := map[string]any{"code": code, "message": message, "requestId": requestID, "retryable": status >= 500}
+	if details != nil {
+		errorBody["details"] = details
+	}
+	body, _ := json.Marshal(map[string]any{"error": errorBody})
+	ctx.SetStatusCode(status)
+	ctx.SetBody(body)
 }
 
 // swagger:route POST /api/v1/projects/budget/check api checkBudget

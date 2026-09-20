@@ -1,7 +1,8 @@
 package ui
 
+import "encoding/json"
+
 // ImportRequest DTO запроса на импорт проекта.
-// swagger:parameters ImportRequest
 type ImportRequest struct {
 	// JSON проекта защиты
 	// Required: true
@@ -9,11 +10,25 @@ type ImportRequest struct {
 	ProjectJSON string `json:"projectJson"`
 }
 
+// ImportProjectParams описывает тело и ключ идемпотентности импорта.
+// swagger:parameters importProject
+type ImportProjectParams struct {
+	// Ключ повторного запроса; область — текущий пользователь и операция, срок — 24 часа.
+	// In: header
+	IdempotencyKey string `json:"Idempotency-Key"`
+	// In: body
+	// Required: true
+	Body ImportRequest
+}
+
 // ImportResponse DTO ответа после успешного импорта.
 // swagger:response ImportResponse
 type ImportResponse struct {
 	// In: body
 	Body struct {
+		ProjectVersion int             `json:"projectVersion"`
+		SnapshotDigest string          `json:"snapshotDigest,omitempty"`
+		Snapshot       json.RawMessage `json:"snapshot,omitempty"`
 		// ID сохранённого проекта
 		// Example: 550e8400-e29b-41d4-a716-446655440000
 		ProjectID string `json:"projectId"`
@@ -30,8 +45,12 @@ type ImportResponse struct {
 }
 
 // ExportQuery DTO query-параметров для экспорта проекта.
-// swagger:parameters ExportQuery
+// swagger:parameters exportProject
 type ExportQuery struct {
+	// Версия сохранённого снимка; без параметра возвращается текущая.
+	// In: query
+	// Minimum: 1
+	ProjectVersion *int `json:"projectVersion,omitempty"`
 	// ID проекта для экспорта
 	// Required: true
 	// In: query
@@ -41,7 +60,6 @@ type ExportQuery struct {
 // ---- CRUD DTOs ----
 
 // CreateProjectRequest DTO запроса на создание конфигурации.
-// swagger:parameters CreateProjectRequest
 type CreateProjectRequest struct {
 	// Имя конфигурации
 	// Required: true
@@ -58,9 +76,23 @@ type CreateProjectRequest struct {
 	ProjectJSON string `json:"projectJson"`
 }
 
+// CreateProjectParams описывает тело и ключ идемпотентности создания.
+// swagger:parameters createProject
+type CreateProjectParams struct {
+	// Ключ повторного запроса; область — текущий пользователь и операция, срок — 24 часа.
+	// In: header
+	IdempotencyKey string `json:"Idempotency-Key"`
+	// In: body
+	// Required: true
+	Body CreateProjectRequest
+}
+
 // ProjectResponse DTO ответа с данными проекта.
-// swagger:response ProjectResponse
+// swagger:model ProjectResponse
 type ProjectResponse struct {
+	ProjectVersion int             `json:"projectVersion"`
+	SnapshotDigest string          `json:"snapshotDigest,omitempty"`
+	Snapshot       json.RawMessage `json:"snapshot,omitempty"`
 	// ID проекта
 	// Example: 550e8400-e29b-41d4-a716-446655440000
 	ProjectID string `json:"projectId"`
@@ -82,14 +114,14 @@ type ProjectResponse struct {
 }
 
 // ProjectListResponse DTO ответа со списком проектов.
-// swagger:response ProjectListResponse
+// swagger:model ProjectListResponse
 type ProjectListResponse struct {
 	Items      []ProjectResponse `json:"items"`
 	TotalItems int64             `json:"totalItems"`
 }
 
 // ListProjectsQuery DTO query-параметров для списка проектов.
-// swagger:parameters ListProjectsQuery
+// swagger:parameters listProjects
 type ListProjectsQuery struct {
 	// Лимит записей
 	// In: query
@@ -106,8 +138,12 @@ type ListProjectsQuery struct {
 }
 
 // GetProjectQuery DTO query-параметров для получения проекта.
-// swagger:parameters GetProjectQuery
+// swagger:parameters getProject
 type GetProjectQuery struct {
+	// Версия сохранённого снимка; без параметра возвращается текущая.
+	// In: query
+	// Minimum: 1
+	ProjectVersion *int `json:"projectVersion,omitempty"`
 	// ID проекта
 	// Required: true
 	// In: query
@@ -115,12 +151,7 @@ type GetProjectQuery struct {
 }
 
 // UpdateProjectRequest DTO запроса на обновление проекта.
-// swagger:parameters UpdateProjectRequest
 type UpdateProjectRequest struct {
-	// ID проекта
-	// Required: true
-	// In: query
-	ID string `json:"id"`
 	// Новое имя конфигурации
 	// In: body
 	Name string `json:"name"`
@@ -130,16 +161,42 @@ type UpdateProjectRequest struct {
 	// JSON проекта защиты для перезаписи содержимого карты (опционально)
 	// In: body
 	ProjectJSON string `json:"projectJson,omitempty"`
-	// Ожидаемая версия проекта для раннего обнаружения конфликта (опционально)
+	// Обязательная положительная ожидаемая версия проекта.
+	// Required: true
+	// Minimum: 1
 	// In: body
 	Version *int `json:"version,omitempty"`
 }
 
+// UpdateProjectParams описывает query ID и тело обновления с ожидаемой версией.
+// swagger:parameters updateProject
+type UpdateProjectParams struct {
+	// ID проекта
+	// Required: true
+	// In: query
+	ID string `json:"id"`
+	// In: body
+	// Required: true
+	Body UpdateProjectRequest
+}
+
 // DeleteProjectQuery DTO query-параметров для удаления проекта.
-// swagger:parameters DeleteProjectQuery
+// swagger:parameters deleteProject
 type DeleteProjectQuery struct {
 	// ID проекта
 	// Required: true
 	// In: query
 	ID string `json:"id"`
+}
+
+// swagger:response ProjectResponse
+type ProjectResponseBody struct {
+	// In: body
+	Body ProjectResponse
+}
+
+// swagger:response ProjectListResponse
+type ProjectListResponseBody struct {
+	// In: body
+	Body ProjectListResponse
 }

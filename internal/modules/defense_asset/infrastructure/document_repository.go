@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 
 	"github.com/fortis/backend/internal/modules/defense_asset/domain"
 	"github.com/fortis/backend/internal/rdbms"
@@ -26,13 +27,13 @@ func NewDocumentRepository(executor rdbms.Executor) domain.DocumentRepositoryInt
 // Save создаёт новый документ.
 func (r *DocumentRepository) Save(ctx context.Context, document *domain.Document) error {
 	model := toDocumentModel(document)
-	return r.executor.WithContext(ctx).Create(model).Error
+	return r.executor.WithContext(ctx).Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)}).Create(model).Error
 }
 
 // FindByID ищет документ по ID.
 func (r *DocumentRepository) FindByID(ctx context.Context, id string) (*domain.Document, error) {
 	var model DefenseAssetDocumentModel
-	result := r.executor.WithContext(ctx).Where("id = ?", id).First(&model)
+	result := r.executor.WithContext(ctx).Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)}).Where("id = ? AND deleted_at IS NULL", id).First(&model)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, domain.ErrDocumentNotFound
@@ -46,8 +47,8 @@ func (r *DocumentRepository) FindByID(ctx context.Context, id string) (*domain.D
 // FindByAssetID возвращает список документов по asset_id, отсортированный по created_at.
 func (r *DocumentRepository) FindByAssetID(ctx context.Context, assetID string) ([]*domain.Document, error) {
 	var models []DefenseAssetDocumentModel
-	result := r.executor.WithContext(ctx).
-		Where("asset_id = ?", assetID).
+	result := r.executor.WithContext(ctx).Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)}).
+		Where("asset_id = ? AND deleted_at IS NULL", assetID).
 		Order("created_at ASC").
 		Find(&models)
 	if result.Error != nil {
@@ -68,7 +69,7 @@ func (r *DocumentRepository) FindByAssetID(ctx context.Context, assetID string) 
 
 // Delete удаляет документ по ID.
 func (r *DocumentRepository) Delete(ctx context.Context, id string) error {
-	result := r.executor.WithContext(ctx).Where("id = ?", id).Delete(&DefenseAssetDocumentModel{})
+	result := r.executor.WithContext(ctx).Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)}).Where("id = ? AND deleted_at IS NULL", id).Delete(&DefenseAssetDocumentModel{})
 	if result.Error != nil {
 		return result.Error
 	}
@@ -92,6 +93,7 @@ func toDocumentModel(doc *domain.Document) *DefenseAssetDocumentModel {
 	}
 
 	return &DefenseAssetDocumentModel{
+		Revision: doc.Revision(), Checksum: nullable(doc.Checksum()), Status: doc.Status(), Commercial: doc.Commercial(), DeletedAt: doc.DeletedAt(),
 		ID:          id,
 		AssetID:     assetID,
 		Name:        doc.Name(),

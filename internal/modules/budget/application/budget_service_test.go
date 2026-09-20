@@ -19,6 +19,26 @@ type mockBudgetRepo struct {
 	err     error
 }
 
+type mockCostRepo map[string]*budgetDomain.CostProjection
+
+func (m mockCostRepo) FindCostProjection(_ context.Context, id string, version int, calculator string) (*budgetDomain.CostProjection, error) {
+	for _, p := range m {
+		identity := p.Identity()
+		if identity.ProjectID() == id && identity.ProjectVersion() == version && identity.CalculationVersion() == calculator {
+			return p, nil
+		}
+	}
+	return nil, budgetDomain.ErrCostProjectionNotFound
+}
+func (m mockCostRepo) SaveCostProjection(ctx context.Context, p *budgetDomain.CostProjection) (*budgetDomain.CostProjection, error) {
+	i := p.Identity()
+	if saved, err := m.FindCostProjection(ctx, i.ProjectID(), i.ProjectVersion(), i.CalculationVersion()); err == nil {
+		return saved, nil
+	}
+	m[i.ProjectID()] = p
+	return p, nil
+}
+
 func (m *mockBudgetRepo) FindByProjectID(_ context.Context, projectID string) (*budgetDomain.BudgetConfig, error) {
 	if m.err != nil {
 		return nil, m.err
@@ -293,9 +313,10 @@ func TestBudgetService_CalculateCost(t *testing.T) {
 		t.Error("echelon-1 not found in byEchelon")
 	}
 
-	// Check type groups
-	if len(calc.ByType()) != 2 {
-		t.Fatalf("ByType() length = %d, want 2", len(calc.ByType()))
+	// Both fixture assets share category detection; legacy protection labels do
+	// not create separate canonical cost categories.
+	if len(calc.ByType()) != 1 || calc.ByType()[0].TypeID() != "detection" {
+		t.Fatalf("ByType() = %+v, want one detection category", calc.ByType())
 	}
 }
 
@@ -691,5 +712,13 @@ func (m *mockProjectRepo) FindAllByUserID(ctx context.Context, userID string, li
 	return m.FindAllByEnterprise(ctx, "ent-1", limit, offset)
 }
 func newTestBudgetService(repo budgetDomain.BudgetConfigRepositoryInterface, projects *mockProjectRepo) *BudgetService {
-	return NewBudgetService(repo, projectApp.NewDefenseProjectService(projects, testAccess{}))
+	service := projectApp.NewDefenseProjectService(projects, testAccess{})
+	for id, p := range projects.projects {
+		raw, err := service.Export(context.Background(), "actor", id)
+		if err == nil {
+			p.SetDocument(raw)
+			p.SetCostCalculationVersion(budgetDomain.CostCalculationV1)
+		}
+	}
+	return NewBudgetService(repo, service, mockCostRepo{})
 }
