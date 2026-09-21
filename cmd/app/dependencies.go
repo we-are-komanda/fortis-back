@@ -96,6 +96,10 @@ func (app *Application) provideDependencies() {
 	processError(err)
 	err = app.container.Provide(enterpriseInfra.NewEnterpriseRepository)
 	processError(err)
+	err = app.container.Provide(enterpriseInfra.NewEnterpriseProvisionRepository)
+	processError(err)
+	err = app.container.Provide(enterpriseApp.NewProvisionService)
+	processError(err)
 
 	err = app.container.Provide(func(service *enterpriseApp.EnterpriseService) enterpriseApp.AccessChecker { return service })
 	processError(err)

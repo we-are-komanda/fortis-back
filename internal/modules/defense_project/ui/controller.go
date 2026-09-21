@@ -88,7 +88,7 @@ func (c *DefenseProjectController) Import(ctx *fasthttp.RequestCtx) {
 		switch {
 		case errors.Is(err, domain.ErrInvalidSchemaVersion):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
-		case errors.Is(err, domain.ErrInvalidProjectData), errors.Is(err, domain.ErrProjectOwnershipImmutable):
+		case errors.Is(err, domain.ErrInvalidProjectData), errors.Is(err, domain.ErrProjectOwnershipImmutable), errors.Is(err, domain.ErrInvalidConfigName):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		case errors.Is(err, domain.ErrVersionConflict):
 			handlers.ErrorHandler(ctx, "version_conflict", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusConflict)
@@ -366,7 +366,15 @@ func (c *DefenseProjectController) Update(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	project, err := c.service.UpdateProject(ctx, handlers.ActorID(ctx), projectID, req.Name, req.EnterpriseID, req.ProjectJSON, req.Version)
+	name := ""
+	if req.Name != nil {
+		name = *req.Name
+		if name == "" {
+			handlers.ErrorHandler(ctx, "validation_error", domain.ErrInvalidConfigName.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
+			return
+		}
+	}
+	project, err := c.service.UpdateProject(ctx, handlers.ActorID(ctx), projectID, name, req.EnterpriseID, req.ProjectJSON, req.Version)
 	if err != nil {
 		if handlers.AuthorizationError(ctx, err) {
 			return
@@ -374,6 +382,8 @@ func (c *DefenseProjectController) Update(ctx *fasthttp.RequestCtx) {
 		switch {
 		case errors.Is(err, domain.ErrVersionRequired):
 			handlers.ErrorHandler(ctx, "version_required", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
+		case errors.Is(err, domain.ErrInvalidConfigName):
+			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		case errors.Is(err, domain.ErrProjectNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "project not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
 		case errors.Is(err, domain.ErrInvalidSchemaVersion):

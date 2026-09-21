@@ -20,7 +20,7 @@ import (
 type importPayload struct {
 	SchemaVersion    int                   `json:"schemaVersion"`
 	ProjectID        string                `json:"projectId"`
-	Name             string                `json:"name,omitempty"`
+	Name             *string               `json:"name,omitempty"`
 	EnterpriseID     string                `json:"enterpriseId,omitempty"`
 	ProjectName      string                `json:"projectName"`
 	BaseObject       importProtectedObject `json:"baseObject"`
@@ -152,8 +152,9 @@ func (s *DefenseProjectService) createFromJSON(ctx context.Context, userID, name
 	if err := s.access.CheckUserAccess(ctx, userID, enterpriseID); err != nil {
 		return nil, err
 	}
-	if name == "" {
-		return nil, domain.ErrInvalidConfigName
+	name, err := domain.NormalizeConfigName(name)
+	if err != nil {
+		return nil, err
 	}
 
 	var payload importPayload
@@ -249,6 +250,15 @@ func (s *DefenseProjectService) importProject(ctx context.Context, userID, rawJS
 	if payload.BaseObject.ID == "" || payload.BaseObject.Name == "" {
 		return nil, fmt.Errorf("baseObject: %w", domain.ErrInvalidProjectData)
 	}
+	// Schema-one documents may omit a separate configuration label.
+	name := payload.ProjectName
+	if payload.Name != nil {
+		name = *payload.Name
+	}
+	name, err := domain.NormalizeConfigName(name)
+	if err != nil {
+		return nil, err
+	}
 
 	// Сборка доменного объекта
 	mode := domain.DefenseProjectModeView
@@ -265,7 +275,7 @@ func (s *DefenseProjectService) importProject(ctx context.Context, userID, rawJS
 
 	project, err := domain.NewDefenseProject(
 		projectID,
-		payload.Name,
+		name,
 		payload.EnterpriseID,
 		payload.ProjectName,
 		domain.NewProtectedObject(
@@ -302,8 +312,9 @@ func (s *DefenseProjectService) CreateProject(ctx context.Context, userID string
 	if err := s.access.CheckUserAccess(ctx, userID, enterpriseID); err != nil {
 		return nil, err
 	}
-	if name == "" {
-		return nil, domain.ErrInvalidConfigName
+	name, err := domain.NormalizeConfigName(name)
+	if err != nil {
+		return nil, err
 	}
 
 	now := time.Now().UTC()
@@ -410,7 +421,11 @@ func (s *DefenseProjectService) UpdateProject(ctx context.Context, userID string
 		return s.overwriteProjectContent(ctx, userID, project, name, projectJSON)
 	}
 
-	if name != "" {
+	if name != "" && name != project.Name() {
+		name, err = domain.NormalizeConfigName(name)
+		if err != nil {
+			return nil, err
+		}
 		project.SetName(name)
 	}
 
@@ -452,11 +467,18 @@ func (s *DefenseProjectService) overwriteProjectContent(ctx context.Context, use
 
 	// Итоговое имя: явный аргумент name важнее, затем payload.Name, затем текущее имя.
 	finalName := existing.Name()
-	if payload.Name != "" {
-		finalName = payload.Name
+	if payload.Name != nil {
+		finalName = *payload.Name
 	}
 	if name != "" {
 		finalName = name
+	}
+	if finalName != existing.Name() {
+		var err error
+		finalName, err = domain.NormalizeConfigName(finalName)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	finalEnterpriseID := existing.EnterpriseID()
