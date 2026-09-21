@@ -9,15 +9,15 @@ func TestNewStructuralEchelonProfile_Success(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name           string
-		layerID        string
-		layerCode      string
-		layerName      string
-		objectCount    int
-		unitCount      int
-		categoryCount  int
-		conflictCount  int
-		coveredCount   int
+		name          string
+		layerID       string
+		layerCode     string
+		layerName     string
+		objectCount   int
+		unitCount     int
+		categoryCount int
+		conflictCount int
+		coveredCount  int
 	}{
 		{
 			name:          "basic echelon profile",
@@ -183,130 +183,6 @@ func TestNewStructuralProfile_NegativeValuesClamped(t *testing.T) {
 	}
 	if profile.TotalMln() != 0 {
 		t.Errorf("TotalMln() = %f, want 0", profile.TotalMln())
-	}
-}
-
-func TestNewEchelonDiff(t *testing.T) {
-	t.Parallel()
-
-	diff := NewEchelonDiff("echelon-1", "detection", "Обнаружение", 2, 5, 1, 0, 2)
-
-	if diff.LayerID() != "echelon-1" {
-		t.Errorf("LayerID() = %s, want echelon-1", diff.LayerID())
-	}
-	if diff.LayerCode() != "detection" {
-		t.Errorf("LayerCode() = %s, want detection", diff.LayerCode())
-	}
-	if diff.LayerName() != "Обнаружение" {
-		t.Errorf("LayerName() = %s", diff.LayerName())
-	}
-	if diff.ObjectCountDelta() != 2 {
-		t.Errorf("ObjectCountDelta() = %d, want 2", diff.ObjectCountDelta())
-	}
-	if diff.UnitCountDelta() != 5 {
-		t.Errorf("UnitCountDelta() = %d, want 5", diff.UnitCountDelta())
-	}
-	if diff.CategoryCountDelta() != 1 {
-		t.Errorf("CategoryCountDelta() = %d, want 1", diff.CategoryCountDelta())
-	}
-	if diff.ConflictCountDelta() != 0 {
-		t.Errorf("ConflictCountDelta() = %d, want 0", diff.ConflictCountDelta())
-	}
-	if diff.CoveredObjDelta() != 2 {
-		t.Errorf("CoveredObjDelta() = %d, want 2", diff.CoveredObjDelta())
-	}
-}
-
-func TestNewConfigDiff(t *testing.T) {
-	t.Parallel()
-
-	byEchelon := []EchelonDiff{
-		NewEchelonDiff("echelon-1", "detection", "Обнаружение", 2, 4, 1, 0, 1),
-	}
-
-	diff := NewConfigDiff(2, 4, 1, 1, 0, 1, 150.0, byEchelon)
-
-	if diff.ObjectCountDelta() != 2 {
-		t.Errorf("ObjectCountDelta() = %d, want 2", diff.ObjectCountDelta())
-	}
-	if diff.UnitCountDelta() != 4 {
-		t.Errorf("UnitCountDelta() = %d, want 4", diff.UnitCountDelta())
-	}
-	if diff.EchelonCountDelta() != 1 {
-		t.Errorf("EchelonCountDelta() = %d, want 1", diff.EchelonCountDelta())
-	}
-	if diff.CategoryCountDelta() != 1 {
-		t.Errorf("CategoryCountDelta() = %d, want 1", diff.CategoryCountDelta())
-	}
-	if diff.ConflictCountDelta() != 0 {
-		t.Errorf("ConflictCountDelta() = %d, want 0", diff.ConflictCountDelta())
-	}
-	if diff.CoveredObjCountDelta() != 1 {
-		t.Errorf("CoveredObjCountDelta() = %d, want 1", diff.CoveredObjCountDelta())
-	}
-	if diff.CostDeltaMln() != 150.0 {
-		t.Errorf("CostDeltaMln() = %f, want 150.0", diff.CostDeltaMln())
-	}
-	if len(diff.ByEchelon()) != 1 {
-		t.Errorf("ByEchelon() length = %d, want 1", len(diff.ByEchelon()))
-	}
-}
-
-func TestNewConfigDiff_NilByEchelon(t *testing.T) {
-	t.Parallel()
-
-	diff := NewConfigDiff(0, 0, 0, 0, 0, 0, 0, nil)
-	if diff.ByEchelon() == nil {
-		t.Error("ByEchelon() should not be nil")
-	}
-	if len(diff.ByEchelon()) != 0 {
-		t.Errorf("ByEchelon() length = %d, want 0", len(diff.ByEchelon()))
-	}
-}
-
-func TestNewConfigSnapshot(t *testing.T) {
-	t.Parallel()
-
-	calc := NewCostCalculation(100, nil, nil, nil)
-	profile := NewStructuralProfile(5, 10, 1, 3, 1, 4, 100, nil)
-	snapshot := NewConfigSnapshot("proj-1", "Config A", profile, calc)
-
-	if snapshot.ProjectID() != "proj-1" {
-		t.Errorf("ProjectID() = %s, want proj-1", snapshot.ProjectID())
-	}
-	if snapshot.ProjectName() != "Config A" {
-		t.Errorf("ProjectName() = %s, want Config A", snapshot.ProjectName())
-	}
-	if snapshot.StructuralProfile().ObjectCount() != 5 {
-		t.Errorf("StructuralProfile().ObjectCount() = %d, want 5", snapshot.StructuralProfile().ObjectCount())
-	}
-	if snapshot.CostCalculation().TotalMln() != 100 {
-		t.Errorf("CostCalculation().TotalMln() = %f, want 100", snapshot.CostCalculation().TotalMln())
-	}
-}
-
-func TestNewConfigComparison(t *testing.T) {
-	t.Parallel()
-
-	calcA := NewCostCalculation(100, nil, nil, nil)
-	calcB := NewCostCalculation(200, nil, nil, nil)
-	profA := NewStructuralProfile(5, 10, 1, 3, 1, 4, 100, nil)
-	profB := NewStructuralProfile(8, 15, 2, 4, 2, 6, 200, nil)
-
-	snapA := NewConfigSnapshot("proj-1", "Config A", profA, calcA)
-	snapB := NewConfigSnapshot("proj-2", "Config B", profB, calcB)
-	diff := NewConfigDiff(3, 5, 1, 1, 1, 2, 100, nil)
-
-	comp := NewConfigComparison(snapA, snapB, diff)
-
-	if comp.ProjectA().ProjectID() != "proj-1" {
-		t.Errorf("ProjectA().ProjectID() = %s, want proj-1", comp.ProjectA().ProjectID())
-	}
-	if comp.ProjectB().ProjectID() != "proj-2" {
-		t.Errorf("ProjectB().ProjectID() = %s, want proj-2", comp.ProjectB().ProjectID())
-	}
-	if comp.Diff().ObjectCountDelta() != 3 {
-		t.Errorf("Diff().ObjectCountDelta() = %d, want 3", comp.Diff().ObjectCountDelta())
 	}
 }
 

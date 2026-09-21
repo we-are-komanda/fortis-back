@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/google/uuid"
 	"strconv"
 
 	"github.com/valyala/fasthttp"
@@ -23,7 +24,7 @@ type BudgetServiceInterface interface {
 	CalculateCost(ctx context.Context, actorID string, projectID string) (*domain.CostCalculation, error)
 	ProjectCost(ctx context.Context, actorID string, projectID string, version *int) (*domain.CostProjection, error)
 	CheckCandidate(ctx context.Context, actorID string, projectID string, command budgetApp.CheckBudgetCommand) (*domain.CandidateBudgetCheck, error)
-	CompareConfigs(ctx context.Context, actorID string, projectID1, projectID2 string) (*domain.ConfigComparison, error)
+	CompareConfigs(ctx context.Context, actorID string, a, b projectDomain.ProjectRef) (*domain.RevisionComparison, error)
 }
 
 // BudgetController — контроллер для API бюджета и стоимости.
@@ -286,8 +287,8 @@ func budgetResponseError(ctx *fasthttp.RequestCtx, err error) bool {
 // swagger:route GET /api/v1/projects/compare api compareConfigs
 // Сравнить две конфигурации проектов
 //
-// Возвращает структурный профиль и стоимость для каждой конфигурации,
-// а также diff между ними.
+// Сравнивает две явно зафиксированные ревизии одного предприятия.
+// Разница B−A — точные копейки; процент null при A=0 или неполных итогах.
 //
 // Produces:
 //   - application/json
@@ -299,36 +300,43 @@ func budgetResponseError(ctx *fasthttp.RequestCtx, err error) bool {
 //	404: description: Not Found — проект не найден
 //	500: description: Internal Server Error
 func (c *BudgetController) Compare(ctx *fasthttp.RequestCtx) {
-	projectID1 := string(ctx.QueryArgs().Peek("id1"))
-	projectID2 := string(ctx.QueryArgs().Peek("id2"))
-
-	if projectID1 == "" || projectID2 == "" {
-		handlers.ErrorHandler(ctx, "validation_error", "both id1 and id2 query parameters are required", &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
-		return
-	}
-
-	comp, err := c.service.CompareConfigs(ctx, handlers.ActorID(ctx), projectID1, projectID2)
-	if err != nil {
-		if handlers.AuthorizationError(ctx, err) {
-			return
+	read := func(side, alias string) (projectDomain.ProjectRef, bool) {
+		id, old := string(ctx.QueryArgs().Peek("projectId"+side)), string(ctx.QueryArgs().Peek(alias))
+		if id != "" && old != "" && id != old {
+			costError(ctx, 400, "validation_error", "Project ID aliases disagree", nil)
+			return projectDomain.ProjectRef{}, false
 		}
-		switch {
-		case errors.Is(err, domain.ErrBothIDsRequired):
-			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
-		case errors.Is(err, domain.ErrComparisonFailed):
-			handlers.ErrorHandler(ctx, "comparison_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
-		default:
-			handlers.ErrorHandler(ctx, "internal_error", "failed to compare configs", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
+		if id == "" {
+			id = old
 		}
+		parsed, err := uuid.Parse(id)
+		if err != nil {
+			costError(ctx, 400, "validation_error", "Both valid project IDs are required", nil)
+			return projectDomain.ProjectRef{}, false
+		}
+		version, err := strconv.Atoi(string(ctx.QueryArgs().Peek("projectVersion" + side)))
+		if err != nil || version <= 0 {
+			costError(ctx, 400, "version_required", "Both positive project versions are required", nil)
+			return projectDomain.ProjectRef{}, false
+		}
+		return projectDomain.ProjectRef{ProjectID: parsed.String(), ProjectVersion: version}, true
+	}
+	a, ok := read("A", "id1")
+	if !ok {
 		return
 	}
-
-	resp := comparisonToDTO(comp)
-	respJSON, err := json.Marshal(resp)
-	if err != nil {
-		handlers.ErrorHandler(ctx, "internal_error", "failed to marshal response", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
+	b, ok := read("B", "id2")
+	if !ok {
 		return
 	}
-
-	ctx.SetBody(respJSON)
+	result, err := c.service.CompareConfigs(ctx, handlers.ActorID(ctx), a, b)
+	if errors.Is(err, domain.ErrIncompatibleProjects) {
+		costError(ctx, 400, "incompatible_projects", "Choose distinct revisions from the same enterprise", nil)
+		return
+	}
+	if budgetResponseError(ctx, err) {
+		return
+	}
+	raw, _ := json.Marshal(comparisonToDTO(result))
+	ctx.SetBody(raw)
 }

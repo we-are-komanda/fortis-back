@@ -238,30 +238,42 @@ type BudgetCheckRequest struct {
 // CompareQuery — query-параметры для сравнения конфигураций.
 // swagger:parameters CompareConfigs
 type CompareQuery struct {
-	// ID первого проекта
-	// Required: true
 	// In: query
-	ProjectID1 string `json:"id1"`
-	// ID второго проекта
-	// Required: true
+	ProjectIDA string `json:"projectIdA"`
 	// In: query
-	ProjectID2 string `json:"id2"`
+	// Required: true
+	// Minimum: 1
+	ProjectVersionA int `json:"projectVersionA"`
+	// In: query
+	ProjectIDB string `json:"projectIdB"`
+	// In: query
+	// Required: true
+	// Minimum: 1
+	ProjectVersionB int `json:"projectVersionB"`
+	// Совместимый alias projectIdA; версия всё равно обязательна.
+	// In: query
+	ID1 string `json:"id1"`
+	// Совместимый alias projectIdB; версия всё равно обязательна.
+	// In: query
+	ID2 string `json:"id2"`
 }
 
-// ConfigComparisonResponse — ответ сравнения двух конфигураций.
+// ConfigComparisonResponse — фиксированные ревизии; без оценки эффективности.
 // swagger:response ConfigComparisonResponse
 type ConfigComparisonResponse struct {
-	ProjectA ConfigSnapshotDTO `json:"projectA"`
-	ProjectB ConfigSnapshotDTO `json:"projectB"`
-	Diff     ConfigDiffDTO     `json:"diff"`
+	EnterpriseID      string              `json:"enterpriseId"`
+	A                 ComparedRevisionDTO `json:"a"`
+	B                 ComparedRevisionDTO `json:"b"`
+	DifferenceMinor   *string             `json:"differenceMinor"`
+	DifferencePercent *string             `json:"differencePercent"`
+	Warnings          []CostIssueDTO      `json:"warnings"`
 }
-
-// ConfigSnapshotDTO — слепок одной конфигурации.
-type ConfigSnapshotDTO struct {
-	ProjectID         string               `json:"projectId"`
-	ProjectName       string               `json:"projectName"`
-	StructuralProfile StructuralProfileDTO `json:"structuralProfile"`
-	CostCalculation   CostCalculationDTO   `json:"costCalculation"`
+type ComparedRevisionDTO struct {
+	Identity  CalculationIdentityDTO `json:"identity"`
+	Name      string                 `json:"name"`
+	UpdatedAt string                 `json:"updatedAt"`
+	Cost      CostProjectionDTO      `json:"cost"`
+	Budget    BudgetProjectionDTO    `json:"budget"`
 }
 
 // StructuralProfileDTO — структурный профиль конфигурации.
@@ -286,30 +298,6 @@ type EchelonProfileDTO struct {
 	CategoryCount   int    `json:"categoryCount"`
 	ConflictCount   int    `json:"conflictCount"`
 	CoveredObjCount int    `json:"coveredObjCount"`
-}
-
-// ConfigDiffDTO — разница между двумя конфигурациями.
-type ConfigDiffDTO struct {
-	ObjectCountDelta     int              `json:"objectCountDelta"`
-	UnitCountDelta       int              `json:"unitCountDelta"`
-	EchelonCountDelta    int              `json:"echelonCountDelta"`
-	CategoryCountDelta   int              `json:"categoryCountDelta"`
-	ConflictCountDelta   int              `json:"conflictCountDelta"`
-	CoveredObjCountDelta int              `json:"coveredObjCountDelta"`
-	CostDeltaMln         float64          `json:"costDeltaMln"`
-	ByEchelon            []EchelonDiffDTO `json:"byEchelon"`
-}
-
-// EchelonDiffDTO — разница по одному эшелону.
-type EchelonDiffDTO struct {
-	LayerID            string `json:"layerId"`
-	LayerCode          string `json:"layerCode"`
-	LayerName          string `json:"layerName"`
-	ObjectCountDelta   int    `json:"objectCountDelta"`
-	UnitCountDelta     int    `json:"unitCountDelta"`
-	CategoryCountDelta int    `json:"categoryCountDelta"`
-	ConflictCountDelta int    `json:"conflictCountDelta"`
-	CoveredObjDelta    int    `json:"coveredObjDelta"`
 }
 
 // BudgetCheckResponse DTO результата проверки бюджета.

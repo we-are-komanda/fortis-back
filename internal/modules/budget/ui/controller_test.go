@@ -18,7 +18,7 @@ import (
 type mockBudgetService struct {
 	calcCostFn       func(ctx context.Context, projectID string) (*domain.CostCalculation, error)
 	projectCostFn    func(ctx context.Context, projectID string, version *int) (*domain.CostProjection, error)
-	compareConfigsFn func(ctx context.Context, projectID1, projectID2 string) (*domain.ConfigComparison, error)
+	compareConfigsFn func(ctx context.Context, a, b defenseDomain.ProjectRef) (*domain.RevisionComparison, error)
 }
 
 func (m *mockBudgetService) CalculateCost(ctx context.Context, actorID string, projectID string) (*domain.CostCalculation, error) {
@@ -28,8 +28,8 @@ func (m *mockBudgetService) ProjectCost(ctx context.Context, actorID, projectID 
 	return m.projectCostFn(ctx, projectID, version)
 }
 
-func (m *mockBudgetService) CompareConfigs(ctx context.Context, actorID string, projectID1, projectID2 string) (*domain.ConfigComparison, error) {
-	return m.compareConfigsFn(ctx, projectID1, projectID2)
+func (m *mockBudgetService) CompareConfigs(ctx context.Context, actorID string, a, b defenseDomain.ProjectRef) (*domain.RevisionComparison, error) {
+	return m.compareConfigsFn(ctx, a, b)
 }
 
 func (m *mockBudgetService) ProjectBudget(context.Context, string, string, *int) (*domain.BudgetProjection, error) {
@@ -91,100 +91,14 @@ func TestBudgetController_CalculateCost_Success(t *testing.T) {
 	}
 }
 
-func TestBudgetController_Compare_Success(t *testing.T) {
-	t.Parallel()
-
-	calcA := domain.NewCostCalculation(100, nil, nil, nil)
-	calcB := domain.NewCostCalculation(200, nil, nil, nil)
-
-	profA := domain.NewStructuralProfile(5, 10, 2, 3, 1, 4, 100, nil)
-	profB := domain.NewStructuralProfile(8, 16, 3, 4, 2, 6, 200, nil)
-
-	snapA := domain.NewConfigSnapshot("proj-1", "Config A", profA, calcA)
-	snapB := domain.NewConfigSnapshot("proj-2", "Config B", profB, calcB)
-	diff := domain.NewConfigDiff(3, 6, 1, 1, 1, 2, 100, nil)
-	comp := domain.NewConfigComparison(snapA, snapB, diff)
-
-	ctrl := NewBudgetController(&mockBudgetService{
-		compareConfigsFn: func(_ context.Context, id1, id2 string) (*domain.ConfigComparison, error) {
-			if id1 != "proj-1" || id2 != "proj-2" {
-				t.Errorf("unexpected ids: %s, %s", id1, id2)
-			}
-			return &comp, nil
-		},
-	})
-
-	ctx := newTestCtx("GET", "/api/v1/projects/compare?id1=proj-1&id2=proj-2", nil)
-	ctrl.Compare(ctx)
-
-	if ctx.Response.StatusCode() != fasthttp.StatusOK {
-		t.Errorf("StatusCode = %d, want %d", ctx.Response.StatusCode(), fasthttp.StatusOK)
-	}
-
-	var resp ConfigComparisonResponse
-	parseResponse(t, ctx.Response.Body(), &resp)
-
-	if resp.ProjectA.ProjectID != "proj-1" {
-		t.Errorf("ProjectA.ProjectID = %s, want proj-1", resp.ProjectA.ProjectID)
-	}
-	if resp.ProjectB.ProjectID != "proj-2" {
-		t.Errorf("ProjectB.ProjectID = %s, want proj-2", resp.ProjectB.ProjectID)
-	}
-	if resp.Diff.ObjectCountDelta != 3 {
-		t.Errorf("Diff.ObjectCountDelta = %d, want 3", resp.Diff.ObjectCountDelta)
-	}
-	if resp.Diff.CostDeltaMln != 100 {
-		t.Errorf("Diff.CostDeltaMln = %f, want 100", resp.Diff.CostDeltaMln)
-	}
-}
-
-func TestBudgetController_Compare_MissingIDs(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		path string
-	}{
-		{
-			name: "both ids missing",
-			path: "/api/v1/projects/compare",
-		},
-		{
-			name: "id1 missing",
-			path: "/api/v1/projects/compare?id2=proj-2",
-		},
-		{
-			name: "id2 missing",
-			path: "/api/v1/projects/compare?id1=proj-1",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctrl := NewBudgetController(&mockBudgetService{})
-			ctx := newTestCtx("GET", tt.path, nil)
-			ctrl.Compare(ctx)
-
-			if ctx.Response.StatusCode() != fasthttp.StatusBadRequest {
-				t.Errorf("StatusCode = %d, want %d", ctx.Response.StatusCode(), fasthttp.StatusBadRequest)
-			}
-		})
-	}
-}
-
-func TestBudgetController_Compare_ProjectNotFound(t *testing.T) {
-	t.Parallel()
-
-	ctrl := NewBudgetController(&mockBudgetService{
-		compareConfigsFn: func(_ context.Context, id1, id2 string) (*domain.ConfigComparison, error) {
-			return nil, defenseDomain.ErrProjectNotFound
-		},
-	})
-
-	ctx := newTestCtx("GET", "/api/v1/projects/compare?id1=nonexistent&id2=proj-2", nil)
-	ctrl.Compare(ctx)
-
-	if ctx.Response.StatusCode() != fasthttp.StatusInternalServerError {
-		t.Errorf("StatusCode = %d, want %d", ctx.Response.StatusCode(), fasthttp.StatusInternalServerError)
+func TestBudgetController_CompareRequiresPinnedVersions(t *testing.T) {
+	const a = "00000000-0000-4000-8000-000000000001"
+	const b = "00000000-0000-4000-8000-000000000002"
+	for _, query := range []string{"", "id1=" + a + "&id2=" + b, "projectIdA=" + a + "&projectIdB=" + b + "&projectVersionA=0&projectVersionB=1", "projectIdA=" + a + "&projectIdB=" + b + "&projectVersionA=1&projectVersionB=1.2", "projectIdA=" + a + "&id1=" + b + "&projectVersionA=1&projectIdB=" + b + "&projectVersionB=2"} {
+		ctx := newTestCtx("GET", "/api/v1/projects/compare?"+query, nil)
+		NewBudgetController(&mockBudgetService{}).Compare(ctx)
+		if ctx.Response.StatusCode() != 400 {
+			t.Fatalf("query %s: status %d", query, ctx.Response.StatusCode())
+		}
 	}
 }

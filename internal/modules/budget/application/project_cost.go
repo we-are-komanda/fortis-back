@@ -8,6 +8,7 @@ import (
 
 	"github.com/fortis/backend/internal/modules/budget/document"
 	"github.com/fortis/backend/internal/modules/budget/domain"
+	projectDomain "github.com/fortis/backend/internal/modules/defense_project/domain"
 )
 
 func (s *BudgetService) ProjectCost(ctx context.Context, actorID, projectID string, version *int) (*domain.CostProjection, error) {
@@ -15,6 +16,11 @@ func (s *BudgetService) ProjectCost(ctx context.Context, actorID, projectID stri
 	if err != nil {
 		return nil, err
 	}
+	return s.projectCost(ctx, project)
+}
+
+// projectCost evaluates the already authorized immutable revision.
+func (s *BudgetService) projectCost(ctx context.Context, project *projectDomain.DefenseProject) (*domain.CostProjection, error) {
 	calculator := project.CostCalculationVersion()
 	if calculator != domain.CostCalculationV1 {
 		return nil, domain.ErrUnsupportedCalculationVersion

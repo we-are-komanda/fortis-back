@@ -69,7 +69,7 @@ func TestFRC02Postgres(t *testing.T) {
 			f.request(t, a, "PUT", "/projects/update?id="+a.p, map[string]any{"name": "allowed", "version": 1}, 200)
 			f.request(t, a, "PUT", "/projects/update?id="+a.p, map[string]string{"enterpriseId": b.e}, 400)
 			for _, pair := range [][2]string{{a.p, b.p}, {b.p, a.p}, {b.p, b.p}} {
-				f.request(t, a, "GET", "/projects/compare?id1="+pair[0]+"&id2="+pair[1], nil, 404)
+				f.request(t, a, "GET", "/projects/compare?projectVersionA=1&projectVersionB=1&id1="+pair[0]+"&id2="+pair[1], nil, 404)
 			}
 			body = f.request(t, a, "GET", "/assets?limit=1", nil, 200)
 			require.NotContains(t, body, b.a)
@@ -94,7 +94,7 @@ func TestFRC02Postgres(t *testing.T) {
 	require.NoError(t, tx.Exec("UPDATE defense_assets SET enterprise_id = NULL WHERE id = ?", f.publicAsset).Error)
 	f.request(t, a, "GET", "/assets/documents/download?id="+f.publicDocument, nil, 404)
 	require.NoError(t, ei.NewEnterpriseRepository(tx).RemoveUserFromEnterprise(context.Background(), a.u, a.e))
-	for _, path := range []string{"/enterprises?id=" + a.e, "/projects/get?id=" + a.p, "/projects/budget?id=" + a.p, "/projects/cost?id=" + a.p, "/projects/report?id=" + a.p, "/assets/get?id=" + a.a, "/assets/documents/download?id=" + a.d, "/projects/compare?id1=" + a.p + "&id2=" + a.p} {
+	for _, path := range []string{"/enterprises?id=" + a.e, "/projects/get?id=" + a.p, "/projects/budget?id=" + a.p, "/projects/cost?id=" + a.p, "/projects/report?id=" + a.p, "/assets/get?id=" + a.a, "/assets/documents/download?id=" + a.d, "/projects/compare?projectVersionA=1&projectVersionB=1&id1=" + a.p + "&id2=" + a.p} {
 		f.request(t, a, "GET", path, nil, 404)
 	}
 	f.request(t, a, "PUT", "/projects/update?id="+a.p, map[string]string{"name": "revoked"}, 404)

@@ -510,8 +510,8 @@ func TestFRC02TenantIsolation(t *testing.T) {
 				for _, x := range []struct {
 					a, b string
 					want int
-				}{{own.p, own.p, 200}, {own.p, other.p, 404}, {other.p, own.p, 404}, {other.p, other.p, 404}} {
-					f.request(t, own, "GET", "/projects/compare?id1="+x.a+"&id2="+x.b, nil, x.want)
+				}{{own.p, other.p, 404}, {other.p, own.p, 404}, {other.p, other.p, 404}} {
+					f.request(t, own, "GET", "/projects/compare?projectVersionA=1&projectVersionB=1&id1="+x.a+"&id2="+x.b, nil, x.want)
 				}
 			})
 			t.Run("F_G_private_assets_documents", func(t *testing.T) {
@@ -554,7 +554,7 @@ func TestFRC02RevocationSameJWT(t *testing.T) {
 	a := f.people[0]
 	f.request(t, a, "GET", "/projects/get?id="+a.p, nil, 200)
 	require.NoError(t, f.enterprises.RemoveUserFromEnterprise(context.Background(), a.u, a.e))
-	for _, path := range []string{"/enterprises?id=" + a.e, "/projects/get?id=" + a.p, "/projects/export?id=" + a.p, "/projects/budget?id=" + a.p, "/projects/cost?id=" + a.p, "/projects/report?id=" + a.p, "/projects/compare?id1=" + a.p + "&id2=" + a.p, "/assets/get?id=" + a.a, "/assets/documents/download?id=" + a.d} {
+	for _, path := range []string{"/enterprises?id=" + a.e, "/projects/get?id=" + a.p, "/projects/export?id=" + a.p, "/projects/budget?id=" + a.p, "/projects/cost?id=" + a.p, "/projects/report?id=" + a.p, "/projects/compare?projectVersionA=1&projectVersionB=1&id1=" + a.p + "&id2=" + a.p, "/assets/get?id=" + a.a, "/assets/documents/download?id=" + a.d} {
 		f.request(t, a, "GET", path, nil, 404)
 	}
 	f.request(t, a, "PUT", "/projects/update?id="+a.p, map[string]string{"name": "revoked"}, 404)
