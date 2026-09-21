@@ -226,43 +226,16 @@ func TestBudgetService_GetBudgetConfig_NotFound(t *testing.T) {
 	}
 }
 
-func TestBudgetService_UpdateBudgetConfig_Create(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	repo := &mockBudgetRepo{configs: map[string]*budgetDomain.BudgetConfig{}}
-	svc := newTestBudgetService(repo, &mockProjectRepo{projects: map[string]*defenseDomain.DefenseProject{"proj-1": makeTestProject(t)}})
-
-	err := svc.UpdateBudgetConfig(ctx, "actor", "proj-1", budgetDomain.BudgetModeLimited, 10000)
-	if err != nil {
-		t.Fatalf("UpdateBudgetConfig() unexpected error: %v", err)
-	}
-
-	config, err := repo.FindByProjectID(ctx, "proj-1")
-	if err != nil {
-		t.Fatalf("FindByProjectID() unexpected error: %v", err)
-	}
-	if config.BudgetAmountMln() != 10000 {
-		t.Errorf("BudgetAmountMln() = %f, want 10000", config.BudgetAmountMln())
-	}
-}
-
-func TestBudgetService_UpdateBudgetConfig_Update(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
+func TestBudgetService_UnversionedBudgetWriteFailsClosed(t *testing.T) {
 	existing, _ := budgetDomain.NewBudgetConfig("proj-1", budgetDomain.BudgetModeLimited, 5000)
 	repo := &mockBudgetRepo{configs: map[string]*budgetDomain.BudgetConfig{"proj-1": existing}}
 	svc := newTestBudgetService(repo, &mockProjectRepo{projects: map[string]*defenseDomain.DefenseProject{"proj-1": makeTestProject(t)}})
-
-	err := svc.UpdateBudgetConfig(ctx, "actor", "proj-1", budgetDomain.BudgetModeLimited, 15000)
-	if err != nil {
-		t.Fatalf("UpdateBudgetConfig() unexpected error: %v", err)
+	err := svc.UpdateBudgetConfig(context.Background(), "actor", "proj-1", budgetDomain.BudgetModeLimited, 15000)
+	if !errors.Is(err, defenseDomain.ErrVersionRequired) {
+		t.Fatalf("want version required, got %v", err)
 	}
-
-	config, _ := repo.FindByProjectID(ctx, "proj-1")
-	if config.BudgetAmountMln() != 15000 {
-		t.Errorf("BudgetAmountMln() = %f, want 15000", config.BudgetAmountMln())
+	if repo.configs["proj-1"] != existing || existing.BudgetAmountMln() != 5000 {
+		t.Fatal("unversioned write changed budget")
 	}
 }
 

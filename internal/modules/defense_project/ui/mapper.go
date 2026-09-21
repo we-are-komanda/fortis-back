@@ -17,7 +17,7 @@ func domainToImportResponse(p *domain.DefenseProject) ImportResponse {
 	return resp
 }
 
-func domainToProjectResponse(p *domain.DefenseProject) ProjectResponse {
+func ProjectResponseFromDomain(p *domain.DefenseProject) ProjectResponse {
 	return ProjectResponse{
 		ProjectVersion: p.Version(), SnapshotDigest: p.SnapshotDigest(), Snapshot: json.RawMessage(p.Snapshot()),
 		ProjectID:    p.ProjectID(),
@@ -32,7 +32,7 @@ func domainToProjectResponse(p *domain.DefenseProject) ProjectResponse {
 func domainToProjectListResponse(projects []*domain.DefenseProject, total int64) ProjectListResponse {
 	items := make([]ProjectResponse, len(projects))
 	for i, p := range projects {
-		items[i] = domainToProjectResponse(p)
+		items[i] = ProjectResponseFromDomain(p)
 	}
 	return ProjectListResponse{
 		Items:      items,

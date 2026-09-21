@@ -401,7 +401,9 @@ func newAccessFixture(t *testing.T) accessFixture {
 		d, e := ad.NewDocument(uuid.NewString(), a.ID(), "Document "+name, "text/plain", "fixture/"+name, "https://storage.example.test/"+name, 0, &ownerID, time.Now(), time.Now())
 		must(e)
 		must(docs.Save(c, d))
-		must(bs.UpdateBudgetConfig(c, u.ID(), p.ProjectID(), bd.BudgetModeUnlimited, 0))
+		initialBudget, budgetErr := bd.NewBudgetConfig(p.ProjectID(), bd.BudgetModeUnlimited, 0)
+		must(budgetErr)
+		must(budgets.Save(c, initialBudget))
 		people = append(people, person{u.ID(), ent.ID(), p.ProjectID(), a.ID(), d.ID(), t})
 	}
 	public, e := as.Create(c, people[0].u, aa.CreateInput{Name: "Public reference", Category: ad.DefenseAssetCategoryRadar, CoverageType: ad.DefenseAssetCoverageCircle, EnterpriseID: &people[0].e})
@@ -502,8 +504,8 @@ func TestFRC02TenantIsolation(t *testing.T) {
 					f.request(t, own, "GET", path+"?id="+own.p, nil, 200)
 					f.request(t, own, "GET", path+"?id="+other.p, nil, 404)
 				}
-				f.request(t, own, "PUT", "/projects/budget?id="+other.p, map[string]any{"budgetMode": "limited", "budgetAmountMln": 999}, 404)
-				f.request(t, own, "POST", "/projects/budget/check?id="+other.p, map[string]any{"assetId": other.a, "quantity": 1}, 404)
+				f.request(t, own, "PUT", "/projects/budget?id="+other.p, map[string]any{"version": 1, "budgetMode": "limited", "budgetLimitMinor": "99900000000"}, 404)
+				f.request(t, own, "POST", "/projects/budget/check?id="+other.p, map[string]any{"version": 1, "projectJson": frc04Document(other.e)}, 404)
 				require.Equal(t, float64(0), f.budgets[other.p].BudgetAmountMln())
 				for _, x := range []struct {
 					a, b string
@@ -557,7 +559,7 @@ func TestFRC02RevocationSameJWT(t *testing.T) {
 	}
 	f.request(t, a, "PUT", "/projects/update?id="+a.p, map[string]string{"name": "revoked"}, 404)
 	f.request(t, a, "DELETE", "/projects/delete?id="+a.p, nil, 404)
-	f.request(t, a, "PUT", "/projects/budget?id="+a.p, map[string]any{"budgetMode": "limited", "budgetAmountMln": 5}, 404)
+	f.request(t, a, "PUT", "/projects/budget?id="+a.p, map[string]any{"version": 1, "budgetMode": "limited", "budgetLimitMinor": "500000000"}, 404)
 	require.NotNil(t, f.projects.projects[a.p])
 }
 func TestFRC02OrphansAndMissing(t *testing.T) {

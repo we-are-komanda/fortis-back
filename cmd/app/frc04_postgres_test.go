@@ -125,7 +125,10 @@ func TestFRC04PostgresCASAndRollback(t *testing.T) {
 		require.Equal(t, before.Document(), after.Document())
 		var count int64
 		require.NoError(t, db.Table("budget_configs").Where("project_id = ?", id).Count(&count).Error)
-		require.Zero(t, count)
+		require.EqualValues(t, 1, count)
+		var budget struct{ ConfigData string }
+		require.NoError(t, db.Table("budget_configs").Where("project_id = ?", id).Take(&budget).Error)
+		require.JSONEq(t, `{"budgetMode":"unlimited","budgetLimitMinor":null}`, budget.ConfigData)
 		require.NoError(t, db.Table("project_revisions").Where("project_id = ? AND version = 3", id).Count(&count).Error)
 		require.Zero(t, count)
 		saved, err := service.UpdateBudget(context.Background(), a.u, id, 2, `{"budgetMode":"limited","budgetAmountMln":12.5}`)
@@ -133,11 +136,13 @@ func TestFRC04PostgresCASAndRollback(t *testing.T) {
 		require.Equal(t, 3, saved.Version())
 		var snapshot map[string]any
 		require.NoError(t, json.Unmarshal([]byte(saved.Snapshot()), &snapshot))
-		require.Equal(t, 12.5, snapshot["budget"].(map[string]any)["budgetAmountMln"])
+		require.Equal(t, "1250000000", snapshot["budget"].(map[string]any)["budgetLimitMinor"])
 		v := 2
 		old, err := service.GetRevision(context.Background(), a.u, id, &v)
 		require.NoError(t, err)
-		require.Contains(t, old.Snapshot(), `"budget": null`)
+		var oldSnapshot map[string]any
+		require.NoError(t, json.Unmarshal([]byte(old.Snapshot()), &oldSnapshot))
+		require.Equal(t, "unlimited", oldSnapshot["budget"].(map[string]any)["budgetMode"])
 	})
 }
 
@@ -466,7 +471,10 @@ func TestFRC04PostgresAuditAtomicity(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, current.Version())
 	require.NoError(t, db.Table("budget_configs").Where("project_id = ?", id).Count(&count).Error)
-	require.Zero(t, count)
+	require.EqualValues(t, 1, count)
+	var budget struct{ ConfigData string }
+	require.NoError(t, db.Table("budget_configs").Where("project_id = ?", id).Take(&budget).Error)
+	require.JSONEq(t, `{"budgetMode":"unlimited","budgetLimitMinor":null}`, budget.ConfigData)
 	require.NoError(t, db.Table("project_revisions").Where("project_id = ?", id).Count(&count).Error)
 	require.EqualValues(t, 1, count)
 	version := 1

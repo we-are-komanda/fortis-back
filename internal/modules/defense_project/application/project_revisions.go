@@ -12,16 +12,23 @@ import (
 	"github.com/fortis/backend/internal/modules/defense_project/domain"
 )
 
-func (s *DefenseProjectService) saveProject(ctx context.Context, p *domain.DefenseProject, actorID string, create bool, operation, key string, budget *string) error {
+func (s *DefenseProjectService) saveProject(ctx context.Context, p *domain.DefenseProject, actorID string, create bool, operation, key string, budget *string, source ...*domain.ProjectRef) error {
 	if !create {
 		p.SetUpdatedAt(time.Now().UTC())
 	}
 	write := domain.ProjectWrite{ActorID: actorID, Create: create, Operation: operation, IdempotencyKey: key, BudgetJSON: budget}
+	if len(source) > 0 {
+		write.BudgetSource = source[0]
+	}
 	if key != "" {
 		if len(key) > 128 || strings.TrimSpace(key) != key || strings.IndexFunc(key, func(r rune) bool { return r < 33 || r > 126 }) >= 0 {
 			return domain.ErrInvalidIdempotencyKey
 		}
-		body, err := json.Marshal(map[string]any{"name": p.Name(), "enterpriseId": p.EnterpriseID(), "project": json.RawMessage(p.Document())})
+		payload := map[string]any{"name": p.Name(), "enterpriseId": p.EnterpriseID(), "project": json.RawMessage(p.Document())}
+		if write.BudgetSource != nil {
+			payload["budgetSource"] = map[string]any{"projectId": write.BudgetSource.ProjectID, "projectVersion": write.BudgetSource.ProjectVersion}
+		}
+		body, err := json.Marshal(payload)
 		if err != nil {
 			return err
 		}
@@ -41,7 +48,7 @@ func (s *DefenseProjectService) saveProject(ctx context.Context, p *domain.Defen
 	}
 	// Existing unit-test/in-memory ports have no revision store. New operations
 	// fail closed there; production DI always supplies ProjectRevisionRepository.
-	if key != "" || budget != nil {
+	if key != "" || budget != nil || write.BudgetSource != nil {
 		return domain.ErrInvalidProjectData
 	}
 	return s.repo.Save(ctx, p)

@@ -148,7 +148,21 @@ func (s *DefenseProjectService) CreateIdempotent(ctx context.Context, userID, na
 	return s.createFromJSON(ctx, userID, name, enterpriseID, rawJSON, key)
 }
 
-func (s *DefenseProjectService) createFromJSON(ctx context.Context, userID, name, enterpriseID, rawJSON, key string) (*domain.DefenseProject, error) {
+func (s *DefenseProjectService) CreateWithBudgetSource(ctx context.Context, userID, name, enterpriseID, rawJSON, key string, source domain.ProjectRef) (*domain.DefenseProject, error) {
+	if source.ProjectVersion <= 0 {
+		return nil, domain.ErrInvalidProjectData
+	}
+	if _, err := uuid.Parse(source.ProjectID); err != nil {
+		return nil, domain.ErrInvalidProjectData
+	}
+	// Commit repeats source authorization under a membership lock before copying.
+	if _, err := s.GetRevision(ctx, userID, source.ProjectID, &source.ProjectVersion); err != nil {
+		return nil, err
+	}
+	return s.createFromJSON(ctx, userID, name, enterpriseID, rawJSON, key, &source)
+}
+
+func (s *DefenseProjectService) createFromJSON(ctx context.Context, userID, name, enterpriseID, rawJSON, key string, budgetSource ...*domain.ProjectRef) (*domain.DefenseProject, error) {
 	if err := s.access.CheckUserAccess(ctx, userID, enterpriseID); err != nil {
 		return nil, err
 	}
@@ -206,7 +220,7 @@ func (s *DefenseProjectService) createFromJSON(ctx context.Context, userID, name
 	}
 
 	project.SetDocument(rawJSON)
-	if err := s.saveProject(ctx, project, userID, true, "create", key, nil); err != nil {
+	if err := s.saveProject(ctx, project, userID, true, "create", key, nil, budgetSource...); err != nil {
 		return nil, fmt.Errorf("save project: %w", err)
 	}
 

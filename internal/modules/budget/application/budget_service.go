@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	defenseApp "github.com/fortis/backend/internal/modules/defense_project/application"
 	"math"
@@ -44,22 +43,8 @@ func (s *BudgetService) UpdateBudgetConfig(ctx context.Context, userID string, p
 	if _, err := s.projects.GetProject(ctx, userID, projectID); err != nil {
 		return err
 	}
-	existing, err := s.GetBudgetConfig(ctx, userID, projectID)
-	if err != nil {
-		if errors.Is(err, budgetDomain.ErrBudgetConfigNotFound) {
-			config, createErr := budgetDomain.NewBudgetConfig(projectID, mode, amountMln)
-			if createErr != nil {
-				return createErr
-			}
-			return s.budgetRepo.Save(ctx, config)
-		}
-		return err
-	}
-
-	if updateErr := existing.SetBudget(mode, amountMln); updateErr != nil {
-		return updateErr
-	}
-	return s.budgetRepo.Save(ctx, existing)
+	// Legacy callers cannot bypass the versioned transaction.
+	return defenseDomain.ErrVersionRequired
 }
 
 // CalculateCost выполняет полный расчёт стоимости конфигурации проекта.

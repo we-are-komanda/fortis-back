@@ -62,6 +62,8 @@ type ExportQuery struct {
 
 // CreateProjectRequest DTO запроса на создание конфигурации.
 type CreateProjectRequest struct {
+	// Явно копировать бюджет доступной сохранённой ревизии. Без параметра — unlimited.
+	BudgetSource *BudgetSourceDTO `json:"budgetSource,omitempty"`
 	// Имя конфигурации: после trim — 1–120 Unicode-символов.
 	// Required: true
 	// Example: Моя конфигурация
@@ -75,6 +77,11 @@ type CreateProjectRequest struct {
 	// Required: true
 	// In: body
 	ProjectJSON string `json:"projectJson"`
+}
+
+type BudgetSourceDTO struct {
+	ProjectID      string `json:"projectId"`
+	ProjectVersion int    `json:"projectVersion"`
 }
 
 // CreateProjectParams описывает тело и ключ идемпотентности создания.

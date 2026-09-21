@@ -2,7 +2,6 @@ package ui
 
 import (
 	"encoding/json"
-	"time"
 
 	"github.com/fortis/backend/internal/modules/budget/domain"
 )
@@ -32,17 +31,6 @@ func costProjectionToDTO(p *domain.CostProjection) CostProjectionDTO {
 		dto.Warnings = append(dto.Warnings, CostIssueDTO{w.Code(), w.Severity(), w.ObjectIDs(), w.Message()})
 	}
 	return dto
-}
-
-// budgetConfigToDomain преобразует DTO в запрос на обновление.
-func budgetConfigToDTO(config *domain.BudgetConfig) BudgetConfigDTO {
-	return BudgetConfigDTO{
-		BudgetMode:      string(config.BudgetMode()),
-		BudgetAmountMln: config.BudgetAmountMln(),
-		ProjectID:       config.ProjectID(),
-		CreatedAt:       config.CreatedAt().Format(time.RFC3339Nano),
-		UpdatedAt:       config.UpdatedAt().Format(time.RFC3339Nano),
-	}
 }
 
 // costCalculationToDTO преобразует доменный расчёт в DTO.
@@ -206,11 +194,7 @@ func ptr[T any](v T) *T {
 }
 
 // checkResultToDTO преобразует доменный результат проверки бюджета в DTO.
-func checkResultToDTO(result *domain.BudgetCheckResult) BudgetCheckResponse {
-	return BudgetCheckResponse{
-		Fits:         result.Fits(),
-		RemainingMln: result.RemainingMln(),
-		RequiredMln:  result.RequiredMln(),
-		BudgetMode:   string(result.BudgetMode()),
-	}
+func budgetProjectionToDTO(p *domain.BudgetProjection) BudgetProjectionDTO {
+	i := p.Identity()
+	return BudgetProjectionDTO{Identity: CalculationIdentityDTO{ProjectID: i.ProjectID(), ProjectVersion: i.ProjectVersion(), CalculationVersion: i.CalculationVersion(), InputDataVersions: i.InputDataVersions(), SnapshotDigest: i.SnapshotDigest()}, Config: BudgetSettingsDTO{BudgetMode: string(p.Config().BudgetMode()), BudgetLimitMinor: p.Config().BudgetLimitMinor()}, SpentMinor: p.SpentMinor(), RemainingMinor: p.RemainingMinor(), Status: p.Status()}
 }

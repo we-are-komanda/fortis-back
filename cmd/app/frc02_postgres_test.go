@@ -133,7 +133,9 @@ func newPostgresFixture(t *testing.T, db *gorm.DB, pipeline ...aa.DocumentPipeli
 		d, e := ad.NewDocument(uuid.NewString(), a.ID(), "Document "+name, "text/plain", "fixture/"+name, "https://storage.example.test/"+name, 0, &ownerID, time.Now(), time.Now())
 		must(e)
 		must(docs.Save(c, d))
-		must(bs.UpdateBudgetConfig(c, u.ID(), p.ProjectID(), bd.BudgetModeUnlimited, 0))
+		initialBudget, budgetErr := bd.NewBudgetConfig(p.ProjectID(), bd.BudgetModeUnlimited, 0)
+		must(budgetErr)
+		must(budgets.Save(c, initialBudget))
 		people = append(people, person{u.ID(), ent.ID(), p.ProjectID(), a.ID(), d.ID(), t})
 	}
 	public, e := as.Create(c, people[0].u, aa.CreateInput{Name: "Public reference", Category: ad.DefenseAssetCategoryRadar, CoverageType: ad.DefenseAssetCoverageCircle, EnterpriseID: &people[0].e})

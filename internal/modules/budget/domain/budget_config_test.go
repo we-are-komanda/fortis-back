@@ -10,28 +10,28 @@ func TestNewBudgetConfig_Success(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		projectID  string
-		mode       BudgetMode
-		amountMln  float64
+		name      string
+		projectID string
+		mode      BudgetMode
+		amountMln float64
 	}{
 		{
-			name:       "limited mode with positive amount",
-			projectID:  "proj-1",
-			mode:       BudgetModeLimited,
-			amountMln:  5000.0,
+			name:      "limited mode with positive amount",
+			projectID: "proj-1",
+			mode:      BudgetModeLimited,
+			amountMln: 5000.0,
 		},
 		{
-			name:       "unlimited mode with zero amount",
-			projectID:  "proj-2",
-			mode:       BudgetModeUnlimited,
-			amountMln:  0,
+			name:      "unlimited mode with zero amount",
+			projectID: "proj-2",
+			mode:      BudgetModeUnlimited,
+			amountMln: 0,
 		},
 		{
-			name:       "unlimited mode ignores amount",
-			projectID:  "proj-3",
-			mode:       BudgetModeUnlimited,
-			amountMln:  1000.0,
+			name:      "unlimited mode ignores amount",
+			projectID: "proj-3",
+			mode:      BudgetModeUnlimited,
+			amountMln: 1000.0,
 		},
 	}
 
@@ -86,13 +86,6 @@ func TestNewBudgetConfig_ValidationErrors(t *testing.T) {
 			wantErr:   ErrInvalidBudgetMode,
 		},
 		{
-			name:      "limited mode with zero amount",
-			projectID: "proj-1",
-			mode:      BudgetModeLimited,
-			amountMln: 0,
-			wantErr:   ErrInvalidBudgetAmount,
-		},
-		{
 			name:      "limited mode with negative amount",
 			projectID: "proj-1",
 			mode:      BudgetModeLimited,
@@ -143,9 +136,9 @@ func TestBudgetConfig_SetBudget(t *testing.T) {
 		t.Errorf("SetBudget() error = %v, want ErrInvalidBudgetMode", err)
 	}
 
-	// Ошибка: limited с нулевой суммой
-	if err := config.SetBudget(BudgetModeLimited, 0); !errors.Is(err, ErrInvalidBudgetAmount) {
-		t.Errorf("SetBudget() error = %v, want ErrInvalidBudgetAmount", err)
+	// Limited zero is an explicit zero limit.
+	if err := config.SetBudget(BudgetModeLimited, 0); err != nil {
+		t.Errorf("SetBudget() zero limit error = %v", err)
 	}
 }
 
@@ -153,12 +146,12 @@ func TestBudgetConfig_RemainingBudget(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		mode       BudgetMode
-		amountMln  float64
-		costMln    float64
-		want       float64
-		wantErr    error
+		name      string
+		mode      BudgetMode
+		amountMln float64
+		costMln   float64
+		want      float64
+		wantErr   error
 	}{
 		{
 			name:      "limited with room",
