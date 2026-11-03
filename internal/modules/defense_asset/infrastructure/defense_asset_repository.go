@@ -52,7 +52,7 @@ func (r *DefenseAssetRepository) FindAll(ctx context.Context, filter domain.Defe
 	db := r.executor.WithContext(ctx)
 
 	// Базовый запрос
-	query := db.Model(&DefenseAssetModel{}).Where("is_public = TRUE OR enterprise_id IN (SELECT enterprise_id FROM user_enterprises WHERE user_id = ?)", filter.UserID)
+	query := db.Model(&DefenseAssetModel{})
 
 	// Фильтры
 	if filter.EnterpriseID != nil {

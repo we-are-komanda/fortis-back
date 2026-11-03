@@ -4,7 +4,8 @@ import "encoding/json"
 
 // ImportRequest DTO запроса на импорт проекта.
 type ImportRequest struct {
-	// JSON проекта защиты
+	// JSON проекта защиты. Имя конфигурации name после trim — 1–120 Unicode-символов;
+	// если отдельное name отсутствует, используется projectName.
 	// Required: true
 	// In: body
 	ProjectJSON string `json:"projectJson"`
@@ -61,7 +62,9 @@ type ExportQuery struct {
 
 // CreateProjectRequest DTO запроса на создание конфигурации.
 type CreateProjectRequest struct {
-	// Имя конфигурации
+	// Явно копировать бюджет доступной сохранённой ревизии. Без параметра — unlimited.
+	BudgetSource *BudgetSourceDTO `json:"budgetSource,omitempty"`
+	// Имя конфигурации: после trim — 1–120 Unicode-символов.
 	// Required: true
 	// Example: Моя конфигурация
 	// In: body
@@ -74,6 +77,11 @@ type CreateProjectRequest struct {
 	// Required: true
 	// In: body
 	ProjectJSON string `json:"projectJson"`
+}
+
+type BudgetSourceDTO struct {
+	ProjectID      string `json:"projectId"`
+	ProjectVersion int    `json:"projectVersion"`
 }
 
 // CreateProjectParams описывает тело и ключ идемпотентности создания.
@@ -152,9 +160,10 @@ type GetProjectQuery struct {
 
 // UpdateProjectRequest DTO запроса на обновление проекта.
 type UpdateProjectRequest struct {
-	// Новое имя конфигурации
+	// Новое имя конфигурации: после trim — 1–120 Unicode-символов.
+	// Отсутствующее поле сохраняет текущее имя; пустое новое имя запрещено.
 	// In: body
-	Name string `json:"name"`
+	Name *string `json:"name"`
 	// Новый enterprise ID
 	// In: body
 	EnterpriseID *string `json:"enterpriseId"`

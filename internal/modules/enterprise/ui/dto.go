@@ -1,5 +1,10 @@
 package ui
 
+type provisionResultDTO struct {
+	EnterpriseID string `json:"enterpriseId"`
+	UserID       string `json:"userId"`
+}
+
 // CreateEnterpriseRequest DTO запроса на создание предприятия.
 // swagger:parameters CreateEnterpriseRequest
 type CreateEnterpriseRequest struct {

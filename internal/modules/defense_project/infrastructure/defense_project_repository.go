@@ -117,8 +117,7 @@ func (r *DefenseProjectRepository) Delete(ctx context.Context, id string) error 
 
 // FindAllByUserID scopes both rows and count before applying pagination.
 func (r *DefenseProjectRepository) FindAllByUserID(ctx context.Context, userID string, limit, offset int) ([]*domain.DefenseProject, int64, error) {
-	query := r.executor.WithContext(ctx).Model(&DefenseProjectModel{}).
-		Where("enterprise_id IN (SELECT enterprise_id FROM user_enterprises WHERE user_id = ?)", userID)
+	query := r.executor.WithContext(ctx).Model(&DefenseProjectModel{})
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err

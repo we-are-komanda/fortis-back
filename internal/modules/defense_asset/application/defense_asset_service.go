@@ -72,18 +72,14 @@ type CreateInput struct {
 
 // Create создаёт новое средство защиты.
 func (s *DefenseAssetService) Create(ctx context.Context, userID string, input CreateInput) (*domain.DefenseAsset, error) {
-	if err := auth.RequireIdentity(userID); err != nil {
-		return nil, err
-	}
-	if input.IsPublic {
-		return nil, auth.ErrForbidden
-	}
 	enterpriseID := ""
 	if input.EnterpriseID != nil {
 		enterpriseID = *input.EnterpriseID
 	}
-	if err := s.access.CheckUserAccess(ctx, userID, enterpriseID); err != nil {
-		return nil, err
+	if enterpriseID != "" {
+		if err := s.access.CheckUserAccess(ctx, userID, enterpriseID); err != nil {
+			return nil, err
+		}
 	}
 	now := time.Now().UTC()
 	id := uuid.New().String()
@@ -143,9 +139,6 @@ func (s *DefenseAssetService) Create(ctx context.Context, userID string, input C
 
 // GetByID возвращает средство защиты по ID.
 func (s *DefenseAssetService) GetByID(ctx context.Context, userID, id string) (*domain.DefenseAsset, error) {
-	if err := auth.RequireIdentity(userID); err != nil {
-		return nil, err
-	}
 	asset, err := s.repo.FindByID(ctx, id)
 	if errors.Is(err, domain.ErrDefenseAssetNotFound) {
 		return nil, auth.ErrNotFound
@@ -153,15 +146,7 @@ func (s *DefenseAssetService) GetByID(ctx context.Context, userID, id string) (*
 	if err != nil {
 		return nil, err
 	}
-	if !asset.IsPublic() {
-		enterpriseID := ""
-		if asset.EnterpriseID() != nil {
-			enterpriseID = *asset.EnterpriseID()
-		}
-		if err := s.access.CheckUserAccess(ctx, userID, enterpriseID); err != nil {
-			return nil, err
-		}
-	}
+
 	return asset, nil
 }
 
@@ -170,9 +155,6 @@ func (s *DefenseAssetService) GetForMutation(ctx context.Context, userID, id str
 	asset, err := s.GetByID(ctx, userID, id)
 	if err != nil {
 		return nil, err
-	}
-	if asset.IsPublic() {
-		return nil, auth.ErrForbidden
 	}
 	return asset, nil
 }
@@ -185,9 +167,6 @@ func (s *DefenseAssetService) List(
 	category *domain.DefenseAssetCategory,
 	limit, offset int,
 ) ([]*domain.DefenseAsset, int64, error) {
-	if err := auth.RequireIdentity(userID); err != nil {
-		return nil, 0, err
-	}
 	if enterpriseID != nil {
 		if err := s.access.CheckUserAccess(ctx, userID, *enterpriseID); err != nil {
 			return nil, 0, err
@@ -263,10 +242,6 @@ func (s *DefenseAssetService) Update(ctx context.Context, userID string, input U
 	// Setters replace fields; keep the loaded value unchanged if validation fails.
 	next := *asset
 	asset = &next
-
-	if input.IsPublic != nil && *input.IsPublic {
-		return nil, auth.ErrForbidden
-	}
 
 	if input.Name != nil {
 		if err := asset.UpdateName(*input.Name); err != nil {

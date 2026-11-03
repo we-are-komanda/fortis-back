@@ -1,223 +1,223 @@
 package ui
 
 import (
-	budgetDomain "github.com/fortis/backend/internal/modules/budget/domain"
-	budgetUi "github.com/fortis/backend/internal/modules/budget/ui"
+	"encoding/json"
+	budget "github.com/fortis/backend/internal/modules/budget/ui"
 	"github.com/fortis/backend/internal/modules/report/domain"
+	"math"
+	"regexp"
+	"time"
 )
 
-// domainToReportResponse преобразует доменный ReportPayload в DTO ответа.
-func domainToReportResponse(payload *domain.ReportPayload) ReportResponse {
-	layers := make([]LayerDTO, len(payload.Layers()))
-	for i, l := range payload.Layers() {
-		layers[i] = layerToDTO(l)
-	}
-
-	objects := make([]ReportObjectLineDTO, len(payload.PlacedObjects()))
-	for i, o := range payload.PlacedObjects() {
-		objects[i] = objectLineToDTO(o)
-	}
-
-	// Преобразуем baseObject
-	baseObj := baseObjectToDTO(payload.BaseObject())
-
-	// Преобразуем estimate (CostCalculation) через типы budget DTO
-	calc := payload.Estimate()
-	estimateDTO := mapCostCalculation(calc)
-
-	// Преобразуем structuralProfile
-	profile := payload.StructuralProfile()
-	profileDTO := mapStructuralProfile(profile)
-
-	return ReportResponse{
-		ProjectID:         payload.ProjectID(),
-		ProjectName:       payload.ProjectName(),
-		BaseObject:        baseObj,
-		Layers:            layers,
-		PlacedObjects:     objects,
-		Estimate:          estimateDTO,
-		StructuralProfile: profileDTO,
-		HideCost:          payload.HideCost(),
-	}
+// frozenDocument is a field allowlist, not a generic project passthrough.
+// Free text remains text; callers must render without HTML or automatic links.
+type frozenDocument struct {
+	BaseObject ReportBaseObject `json:"baseObject"`
+	Layers     []struct {
+		ReportLayer
+		IsVisible *bool `json:"isVisible"`
+	} `json:"layers"`
+	AssetLibrary []struct {
+		ID             string               `json:"id"`
+		Name           string               `json:"name"`
+		Category       string               `json:"category"`
+		Description    *string              `json:"description"`
+		UnitLabel      string               `json:"unitLabel"`
+		ProtectionType string               `json:"protectionType"`
+		Compound       *ReportCompoundCard  `json:"compoundProfile"`
+		Weapon         *ReportWeaponCard    `json:"weaponSpec"`
+		Detection      *ReportDetectionCard `json:"detectionSpec"`
+		EW             *ReportEWCard        `json:"ewSpec"`
+	} `json:"assetLibrary"`
+	PlacedObjects []struct {
+		ID             string     `json:"id"`
+		AssetID        string     `json:"assetId"`
+		LayerID        string     `json:"layerId"`
+		Name           *string    `json:"name"`
+		Quantity       int        `json:"quantity"`
+		Coordinates    Coordinate `json:"coordinates"`
+		Rotation       *float64   `json:"rotation"`
+		Scale          *float64   `json:"scale"`
+		IsVisibleOnMap *bool      `json:"isVisibleOnMap"`
+		Notes          *string    `json:"notes"`
+	} `json:"placedObjects"`
 }
 
-// baseObjectToDTO преобразует доменный ReportBaseObject в DTO.
-func baseObjectToDTO(bo domain.ReportBaseObject) BaseObjectDTO {
-	return BaseObjectDTO{
-		ID:   bo.ID(),
-		Name: bo.Name(),
-		Center: CenterDTO{
-			Lat: bo.Lat(),
-			Lng: bo.Lng(),
-		},
+func (c *Coordinate) UnmarshalJSON(data []byte) error {
+	var v struct {
+		Lat      *float64 `json:"lat"`
+		Lng      *float64 `json:"lng"`
+		Altitude *float64 `json:"altitude"`
 	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	if v.Lat == nil || v.Lng == nil {
+		return domain.ErrInvalidSnapshot
+	}
+	*c = Coordinate{present: true, Lat: *v.Lat, Lng: *v.Lng, Altitude: v.Altitude}
+	if !validCoordinate(*c) {
+		return domain.ErrInvalidSnapshot
+	}
+	return nil
 }
 
-// layerToDTO преобразует доменный ReportLayer в DTO.
-func layerToDTO(l domain.ReportLayer) LayerDTO {
-	return LayerDTO{
-		ID:            l.ID(),
-		Name:          l.Name(),
-		Code:          l.Code(),
-		Description:   l.Description(),
-		GeometryType:  l.GeometryType(),
-		CenterLat:     l.CenterLat(),
-		CenterLng:     l.CenterLng(),
-		RadiusM:       l.RadiusM(),
-		MinRadiusM:    l.MinRadiusM(),
-		MaxRadiusM:    l.MaxRadiusM(),
-		Color:         l.Color(),
-		Opacity:       l.Opacity(),
+var reportColor = regexp.MustCompile(`(?i)^(#[0-9a-f]{3}|#[0-9a-f]{4}|#[0-9a-f]{6}|#[0-9a-f]{8}|black|white|red|green|blue|gray|grey|orange|purple|yellow|cyan|magenta|transparent|rgba?\([0-9.,% ]+\))$`)
+
+func validCoordinate(c Coordinate) bool {
+	return c.present && !math.IsNaN(c.Lat) && !math.IsNaN(c.Lng) && !math.IsInf(c.Lat, 0) && !math.IsInf(c.Lng, 0) && c.Lat >= -90 && c.Lat <= 90 && c.Lng >= -180 && c.Lng <= 180
+}
+func safeGeometry(g ReportGeometry) (ReportGeometry, error) {
+	validRadius := func(n *float64) bool { return n != nil && *n >= 0 && !math.IsNaN(*n) && !math.IsInf(*n, 0) }
+	switch g.Type {
+	case "circle":
+		if g.Center == nil || !validCoordinate(*g.Center) || !validRadius(g.RadiusM) {
+			return g, domain.ErrInvalidSnapshot
+		}
+		return ReportGeometry{Type: g.Type, Center: g.Center, RadiusM: g.RadiusM}, nil
+	case "ring":
+		if g.Center == nil || !validCoordinate(*g.Center) || !validRadius(g.MinRadiusM) || !validRadius(g.MaxRadiusM) || *g.MinRadiusM > *g.MaxRadiusM {
+			return g, domain.ErrInvalidSnapshot
+		}
+		return ReportGeometry{Type: g.Type, Center: g.Center, MinRadiusM: g.MinRadiusM, MaxRadiusM: g.MaxRadiusM}, nil
+	case "polygon":
+		points := g.Coordinates
+		if points == nil {
+			points = g.Points
+		}
+		if points == nil {
+			return g, domain.ErrInvalidSnapshot
+		}
+		for _, p := range *points {
+			if !validCoordinate(p) {
+				return g, domain.ErrInvalidSnapshot
+			}
+		}
+		return ReportGeometry{Type: g.Type, Coordinates: points, IsClosed: g.IsClosed}, nil
+	case "freeform":
+		if g.Points == nil {
+			return g, domain.ErrInvalidSnapshot
+		}
+		for _, p := range *g.Points {
+			if !validCoordinate(p) {
+				return g, domain.ErrInvalidSnapshot
+			}
+		}
+		return ReportGeometry{Type: g.Type, Points: g.Points}, nil
+	default:
+		return g, domain.ErrInvalidSnapshot
 	}
 }
-
-// objectLineToDTO преобразует доменный ReportPlacedObject в DTO.
-func objectLineToDTO(o domain.ReportPlacedObject) ReportObjectLineDTO {
-	dto := ReportObjectLineDTO{
-		ObjectID:       o.ID(),
-		AssetID:        o.AssetID(),
-		AssetName:      o.AssetName(),
-		LayerID:        o.LayerID(),
-		LayerCode:      o.LayerCode(),
-		LayerName:      o.LayerName(),
-		Quantity:       o.Quantity(),
-		ProtectionType: o.ProtectionType(),
-		UnitPriceMln:   o.UnitPriceMln(),
-		LineTotalMln:   o.LineTotalMln(),
-		IsCompoundPost: o.IsCompoundPost(),
+func RenderReport(draft *domain.ReportDraft) (string, error) {
+	p := draft.Project()
+	var doc frozenDocument
+	if err := json.Unmarshal([]byte(p.Document()), &doc); err != nil {
+		return "", domain.ErrInvalidSnapshot
 	}
-
-	if cs := o.CompositionSummary(); cs != nil {
-		dto.CompositionSummary = &CompositionSummaryDTO{
-			PostType:       cs.PostType(),
-			Personnel:      cs.Personnel(),
-			Accountability: cs.Accountability(),
-			Armament:       cs.Armament(),
-			WeaponUnits:    cs.WeaponUnits(),
-			SectorOrRange:  cs.SectorOrRange(),
-			Azimuth:        cs.Azimuth(),
+	if !validCoordinate(doc.BaseObject.Center) {
+		return "", domain.ErrInvalidSnapshot
+	}
+	var snapshot struct {
+		Inputs map[string]string `json:"inputDataVersions"`
+	}
+	if err := json.Unmarshal([]byte(p.Snapshot()), &snapshot); err != nil {
+		return "", domain.ErrInvalidSnapshot
+	}
+	if snapshot.Inputs == nil {
+		snapshot.Inputs = map[string]string{}
+	}
+	common := ReportCommon{ReportID: draft.ID(), ReportSchemaVersion: domain.SchemaVersion,
+		Identity:    budget.CalculationIdentityDTO{ProjectID: p.ProjectID(), ProjectVersion: p.Version(), CalculationVersion: p.CostCalculationVersion(), InputDataVersions: snapshot.Inputs, SnapshotDigest: p.SnapshotDigest()},
+		GeneratedAt: draft.GeneratedAt().UTC().Format(time.RFC3339Nano), Title: p.Name(), Enterprise: ReportEnterprise{ID: p.EnterpriseID()},
+		MapSnapshotData: ReportMap{BaseObject: doc.BaseObject, Layers: []ReportLayer{}, Objects: []ReportMapObject{}},
+		MapVisibility:   ReportVisibility{Mode: draft.Key().MapView(), LayerIDs: []string{}, ObjectIDs: []string{}}, Objects: []ReportObject{}, Warnings: []budget.CostIssueDTO{},
+		Limitations: []string{"Автоматическая проверка не выполнена.", "Схема использует сохранённые координаты без внешней картографической подложки; эффективность защиты не оценивалась."}}
+	warning := func(code, message string) {
+		common.Warnings = append(common.Warnings, budget.CostIssueDTO{Code: code, Severity: "warning", ObjectIDs: []string{}, Message: message})
+	}
+	warning("enterprise_name_unavailable", "Название предприятия не зафиксировано в этой версии.")
+	warning("manual_text_review_required", "Проверьте свободный текст перед передачей отчёта: он может содержать суммы и другую чувствительную информацию.")
+	if draft.Key().MapView() == "saved" {
+		warning("selective_map", "На схеме показана сохранённая выборка; перечень объектов остаётся полным.")
+	}
+	visibleLayers := map[string]bool{}
+	for _, l := range doc.Layers {
+		layer := l.ReportLayer
+		layer.IsVisible = l.IsVisible == nil || *l.IsVisible
+		if layer.Color != nil && !reportColor.MatchString(*layer.Color) {
+			return "", domain.ErrInvalidSnapshot
+		}
+		var err error
+		layer.Geometry, err = safeGeometry(layer.Geometry)
+		if err != nil {
+			return "", err
+		}
+		common.MapSnapshotData.Layers = append(common.MapSnapshotData.Layers, layer)
+		if draft.Key().MapView() == "all" || layer.IsVisible {
+			visibleLayers[layer.ID] = true
+			common.MapVisibility.LayerIDs = append(common.MapVisibility.LayerIDs, layer.ID)
 		}
 	}
-
-	if ws := o.WeaponSummary(); ws != nil {
-		dto.WeaponSummary = &WeaponSummaryDTO{
-			Caliber:        ws.Caliber(),
-			AmmunitionType: ws.AmmunitionType(),
-			OperationMode:  ws.OperationMode(),
-			ModuleCount:    ws.ModuleCount(),
-			IsManual:       ws.IsManual(),
+	for _, o := range doc.PlacedObjects {
+		if !validCoordinate(o.Coordinates) {
+			return "", domain.ErrInvalidSnapshot
+		}
+		obj := ReportObject{ReportMapObject: ReportMapObject{ObjectID: o.ID, AssetID: o.AssetID, LayerID: o.LayerID, Name: o.AssetID, Quantity: o.Quantity, Coordinates: o.Coordinates, Rotation: o.Rotation, Scale: o.Scale, IsVisibleOnMap: o.IsVisibleOnMap == nil || *o.IsVisibleOnMap}, Notes: o.Notes}
+		for _, a := range doc.AssetLibrary {
+			if a.ID == o.AssetID {
+				obj.Name = a.Name
+				obj.Category = a.Category
+				obj.Description = a.Description
+				obj.UnitLabel = a.UnitLabel
+				obj.ProtectionType = a.ProtectionType
+				if a.Compound != nil || a.Weapon != nil || a.Detection != nil || a.EW != nil {
+					obj.Card = &ReportCard{Compound: a.Compound, Weapon: a.Weapon, Detection: a.Detection, EW: a.EW}
+				}
+				break
+			}
+		}
+		if o.Name != nil && *o.Name != "" {
+			obj.Name = *o.Name
+		}
+		common.Objects = append(common.Objects, obj)
+		common.MapSnapshotData.Objects = append(common.MapSnapshotData.Objects, obj.ReportMapObject)
+		if draft.Key().MapView() == "all" || (obj.IsVisibleOnMap && visibleLayers[obj.LayerID]) {
+			common.MapVisibility.ObjectIDs = append(common.MapVisibility.ObjectIDs, obj.ObjectID)
 		}
 	}
-
-	if az := o.AzimuthSectorSummary(); az != nil {
-		dto.AzimuthSectorSummary = &AzimuthSectorSummaryDTO{
-			Azimuth:      az.Azimuth(),
-			CoverageType: az.CoverageType(),
-			Angle:        az.Angle(),
+	var body []byte
+	var err error
+	if draft.Key().HideCost() {
+		body, err = json.Marshal(UnpricedReportResponse{ReportCommon: common, HideCost: true})
+	} else {
+		cost := budget.CostProjectionToDTO(draft.Cost())
+		projection := budget.BudgetProjectionToDTO(draft.Budget())
+		sources := []budget.CostDataProvenanceDTO{}
+		seen := map[string]bool{}
+		preliminary := !cost.IsComplete
+		for _, line := range cost.Lines {
+			if line.Provenance == nil {
+				preliminary = true
+				continue
+			}
+			source := *line.Provenance
+			raw, _ := json.Marshal(source)
+			if !seen[string(raw)] {
+				sources = append(sources, source)
+				seen[string(raw)] = true
+			}
+			if source.Quality != "confirmed" {
+				preliminary = true
+			}
 		}
+		common.Warnings = append(common.Warnings, cost.Warnings...)
+		if preliminary {
+			warning("preliminary_report", "Предварительный отчёт: имеются неизвестные цены или непроверенные исходные данные.")
+		}
+		body, err = json.Marshal(PricedReportResponse{ReportCommon: common, HideCost: false, Cost: cost, Budget: projection, Sources: sources})
 	}
-
-	return dto
-}
-
-// mapCostCalculation преобразует доменный CostCalculation в DTO.
-func mapCostCalculation(calc budgetDomain.CostCalculation) budgetUi.CostCalculationDTO {
-	byEchelon := make([]budgetUi.EchelonEstimateDTO, len(calc.ByEchelon()))
-	for i, e := range calc.ByEchelon() {
-		byEchelon[i] = mapEchelonEstimate(e)
+	if err != nil {
+		return "", domain.ErrInvalidSnapshot
 	}
-
-	byType := make([]budgetUi.TypeEstimateDTO, len(calc.ByType()))
-	for i, t := range calc.ByType() {
-		byType[i] = mapTypeEstimate(t)
-	}
-
-	byObject := make([]budgetUi.EstimateLineDTO, len(calc.ByObject()))
-	for i, l := range calc.ByObject() {
-		byObject[i] = mapEstimateLine(l)
-	}
-
-	return budgetUi.CostCalculationDTO{
-		TotalMln:  calc.TotalMln(),
-		ByEchelon: byEchelon,
-		ByType:    byType,
-		ByObject:  byObject,
-	}
-}
-
-// mapEchelonEstimate преобразует EchelonEstimate в DTO.
-func mapEchelonEstimate(e budgetDomain.EchelonEstimate) budgetUi.EchelonEstimateDTO {
-	lines := make([]budgetUi.EstimateLineDTO, len(e.Lines()))
-	for i, l := range e.Lines() {
-		lines[i] = mapEstimateLine(l)
-	}
-	return budgetUi.EchelonEstimateDTO{
-		EchelonID:       e.EchelonID(),
-		EchelonName:     e.EchelonName(),
-		Lines:           lines,
-		EchelonTotalMln: e.EchelonTotalMln(),
-	}
-}
-
-// mapTypeEstimate преобразует TypeEstimate в DTO.
-func mapTypeEstimate(t budgetDomain.TypeEstimate) budgetUi.TypeEstimateDTO {
-	lines := make([]budgetUi.EstimateLineDTO, len(t.Lines()))
-	for i, l := range t.Lines() {
-		lines[i] = mapEstimateLine(l)
-	}
-	return budgetUi.TypeEstimateDTO{
-		TypeID:       t.TypeID(),
-		TypeName:     t.TypeName(),
-		Lines:        lines,
-		TypeTotalMln: t.TypeTotalMln(),
-	}
-}
-
-// mapEstimateLine преобразует EstimateLine в DTO.
-func mapEstimateLine(l budgetDomain.EstimateLine) budgetUi.EstimateLineDTO {
-	return budgetUi.EstimateLineDTO{
-		ObjectID:     l.ObjectID(),
-		AssetID:      l.AssetID(),
-		AssetName:    l.AssetName(),
-		EchelonID:    l.EchelonID(),
-		EchelonName:  l.EchelonName(),
-		TypeID:       l.TypeID(),
-		TypeName:     l.TypeName(),
-		Quantity:     l.Quantity(),
-		UnitPriceMln: l.UnitPriceMln(),
-		LineTotalMln: l.LineTotalMln(),
-	}
-}
-
-// mapStructuralProfile преобразует StructuralProfile в DTO.
-func mapStructuralProfile(sp budgetDomain.StructuralProfile) budgetUi.StructuralProfileDTO {
-	byEchelon := make([]budgetUi.EchelonProfileDTO, len(sp.ByEchelon()))
-	for i, ep := range sp.ByEchelon() {
-		byEchelon[i] = mapEchelonProfile(ep)
-	}
-
-	return budgetUi.StructuralProfileDTO{
-		ObjectCount:     sp.ObjectCount(),
-		UnitCount:       sp.UnitCount(),
-		EchelonCount:    sp.EchelonCount(),
-		CategoryCount:   sp.CategoryCount(),
-		ConflictCount:   sp.ConflictCount(),
-		CoveredObjCount: sp.CoveredObjCount(),
-		TotalMln:        sp.TotalMln(),
-		ByEchelon:       byEchelon,
-	}
-}
-
-// mapEchelonProfile преобразует StructuralEchelonProfile в DTO.
-func mapEchelonProfile(ep budgetDomain.StructuralEchelonProfile) budgetUi.EchelonProfileDTO {
-	return budgetUi.EchelonProfileDTO{
-		LayerID:         ep.LayerID(),
-		LayerCode:       ep.LayerCode(),
-		LayerName:       ep.LayerName(),
-		ObjectCount:     ep.ObjectCount(),
-		UnitCount:       ep.UnitCount(),
-		CategoryCount:   ep.CategoryCount(),
-		ConflictCount:   ep.ConflictCount(),
-		CoveredObjCount: ep.CoveredObjCount(),
-	}
+	return string(body), nil
 }

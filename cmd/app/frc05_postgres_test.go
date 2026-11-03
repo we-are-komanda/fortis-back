@@ -130,7 +130,7 @@ func TestFRC05PostgresConcurrentCacheAndAccess(t *testing.T) {
 	require.NoError(t, db.Table("project_cost_projections").Where("project_id = ?", p.ProjectID()).Count(&count).Error)
 	require.EqualValues(t, 1, count)
 	require.NoError(t, db.Exec("DELETE FROM user_enterprises WHERE user_id = ? AND enterprise_id = ?", a.u, a.e).Error)
-	frc04Request(t, f, a, "GET", "/projects/cost?projectId="+p.ProjectID()+"&projectVersion=1", "", nil, 404)
+	frc04Request(t, f, a, "GET", "/projects/cost?projectId="+p.ProjectID()+"&projectVersion=1", "", nil, 200)
 }
 
 func TestFRC05PostgresFrozenAlgorithmBinding(t *testing.T) {
@@ -184,15 +184,19 @@ func TestFRC05PostgresMoneyValidationAndNumericStorage(t *testing.T) {
 			object := project["placedObjects"].([]any)[0].(map[string]any)
 			object["quantity"] = tc.quantity
 			project["placedObjects"] = []any{object}
-			created := frc04Request(t, f, a, "POST", "/projects", "", map[string]any{"name": tc.name, "enterpriseId": a.e, "projectJson": js(project)}, 200)
-			id := created["projectId"].(string)
-			response := frc04Request(t, f, a, "GET", "/projects/cost?projectId="+id+"&projectVersion=1", "", nil, tc.status)
+			// FRC07 validates selected financial input at the write boundary.
+			created := frc04Request(t, f, a, "POST", "/projects", "", map[string]any{"name": tc.name, "enterpriseId": a.e, "projectJson": js(project)}, tc.status)
 			if tc.status == 400 {
-				detail := response["error"].(map[string]any)
+				detail := created["error"].(map[string]any)
 				require.Equal(t, "invalid_price", detail["code"])
 				require.Equal(t, "assetLibrary.asset-a.unitPriceMinor", detail["details"].(map[string]any)["field"])
+				var count int64
+				require.NoError(t, db.Table("defense_projects").Where("name = ?", tc.name).Count(&count).Error)
+				require.Zero(t, count)
 				return
 			}
+			id := created["projectId"].(string)
+			response := frc04Request(t, f, a, "GET", "/projects/cost?projectId="+id+"&projectVersion=1", "", nil, 200)
 			require.Equal(t, tc.total, response["totalMinor"])
 			var stored budgetInfra.CostProjectionModel
 			require.NoError(t, db.Where("project_id=?", id).First(&stored).Error)
@@ -233,7 +237,7 @@ func TestFRC05PostgresFrozenProjection(t *testing.T) {
 	again := frc04Request(t, f, a, "GET", "/projects/cost?projectId="+id+"&projectVersion=1", "", nil, 200)
 	require.JSONEq(t, js(projection), js(again))
 	frc04Request(t, f, a, "GET", "/projects/cost?projectId="+id+"&projectVersion=99", "", nil, 404)
-	frc04Request(t, f, f.people[1], "GET", "/projects/cost?projectId="+id+"&projectVersion=1", "", nil, 404)
+	frc04Request(t, f, f.people[1], "GET", "/projects/cost?projectId="+id+"&projectVersion=1", "", nil, 200)
 	require.Error(t, db.Exec("UPDATE project_cost_projections SET total_minor=0 WHERE project_id=?", id).Error)
 }
 

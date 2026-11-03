@@ -1,50 +1,64 @@
 package ui
 
+import (
+	"encoding/json"
+	projectUi "github.com/fortis/backend/internal/modules/defense_project/ui"
+)
+
 // ---- Budget Config DTOs ----
 
 // BudgetConfigQuery DTO query-параметров для получения/обновления бюджета.
 // swagger:parameters GetBudgetConfig UpdateBudgetConfig
 type BudgetConfigQuery struct {
-	// ID проекта
-	// Required: true
+	// ID проекта; id — совместимый alias, конфликтующие значения отклоняются.
+	// In: query
+	ProjectID string `json:"projectId"`
 	// In: query
 	ID string `json:"id"`
-}
-
-// BudgetConfigDTO DTO конфигурации бюджета проекта.
-// swagger:response BudgetConfigResponse
-type BudgetConfigDTO struct {
-	// Режим бюджета: "limited" | "unlimited"
-	// Required: true
-	// Enum: ["limited","unlimited"]
-	// Example: limited
-	BudgetMode string `json:"budgetMode"`
-	// Сумма бюджета в млн ₽ (только для limited режима)
-	// Example: 5000.0
-	BudgetAmountMln float64 `json:"budgetAmountMln"`
-	// ID проекта
-	// Example: 550e8400-e29b-41d4-a716-446655440000
-	ProjectID string `json:"projectId"`
-	// Дата создания
-	// Example: 2026-06-12T14:00:00.000Z
-	CreatedAt string `json:"createdAt"`
-	// Дата обновления
-	// Example: 2026-06-12T14:00:00.000Z
-	UpdatedAt string `json:"updatedAt"`
+	// Для GET: сохранённая версия; без параметра читается текущая.
+	// In: query
+	// Minimum: 1
+	ProjectVersion *int `json:"projectVersion,omitempty"`
 }
 
 // UpdateBudgetRequest DTO запроса на обновление бюджета.
 // swagger:parameters UpdateBudgetRequest
 type UpdateBudgetRequest struct {
-	// Режим бюджета: "limited" | "unlimited"
+	// Ожидаемая положительная общая версия проекта.
 	// Required: true
-	// In: body
+	Version int `json:"version"`
+	// Режим бюджета.
+	// Required: true
 	// Enum: ["limited","unlimited"]
 	BudgetMode string `json:"budgetMode"`
-	// Сумма бюджета в млн ₽ (обязательна для limited)
-	// In: body
-	// Example: 5000.0
-	BudgetAmountMln float64 `json:"budgetAmountMln"`
+	// Точные копейки строкой для limited, явный null для unlimited; ноль допустим.
+	// Required: true
+	BudgetLimitMinor json.RawMessage `json:"budgetLimitMinor"`
+}
+
+// BudgetProjectionDTO — точный бюджет сохранённой ревизии, неизвестные суммы — null.
+// swagger:response BudgetProjectionResponse
+type BudgetProjectionDTO struct {
+	Identity       CalculationIdentityDTO `json:"identity"`
+	Config         BudgetSettingsDTO      `json:"config"`
+	SpentMinor     *string                `json:"spentMinor"`
+	RemainingMinor *string                `json:"remainingMinor"`
+	Status         string                 `json:"status"`
+}
+type BudgetSettingsDTO struct {
+	BudgetMode       string  `json:"budgetMode"`
+	BudgetLimitMinor *string `json:"budgetLimitMinor"`
+}
+
+// BudgetUpdateResponse содержит новую каноническую ревизию и её бюджет.
+// swagger:response BudgetUpdateResponse
+type BudgetUpdateResponse struct {
+	projectUi.ProjectResponse
+	Budget BudgetProjectionDTO `json:"budget"`
+}
+type ProjectRefDTO struct {
+	ProjectID      string `json:"projectId"`
+	ProjectVersion int    `json:"projectVersion"`
 }
 
 // ---- Cost Calculation DTOs ----
@@ -201,8 +215,9 @@ type CostCalculationDTO struct {
 // BudgetCheckQuery DTO query-параметров для проверки бюджета.
 // swagger:parameters CheckBudget
 type BudgetCheckQuery struct {
-	// ID проекта
-	// Required: true
+	// ID проекта; id — совместимый alias.
+	// In: query
+	ProjectID string `json:"projectId"`
 	// In: query
 	ID string `json:"id"`
 }
@@ -210,21 +225,12 @@ type BudgetCheckQuery struct {
 // BudgetCheckRequest DTO запроса проверки бюджета.
 // swagger:parameters BudgetCheckRequest
 type BudgetCheckRequest struct {
-	// ID средства защиты
+	// Ожидаемая положительная версия проекта.
 	// Required: true
-	// In: body
-	// Example: 550e8400-e29b-41d4-a716-446655440000
-	AssetID string `json:"assetId"`
-	// Количество единиц
+	Version int `json:"version"`
+	// Полный итоговый кандидат; проверка не записывает и не резервирует бюджет.
 	// Required: true
-	// In: body
-	// Example: 2
-	Quantity int `json:"quantity"`
-	// ID эшелона (слоя)
-	// Required: true
-	// In: body
-	// Example: detection
-	EchelonID string `json:"echelonId"`
+	ProjectJSON string `json:"projectJson"`
 }
 
 // ---- Comparison DTOs ----
@@ -232,30 +238,42 @@ type BudgetCheckRequest struct {
 // CompareQuery — query-параметры для сравнения конфигураций.
 // swagger:parameters CompareConfigs
 type CompareQuery struct {
-	// ID первого проекта
-	// Required: true
 	// In: query
-	ProjectID1 string `json:"id1"`
-	// ID второго проекта
-	// Required: true
+	ProjectIDA string `json:"projectIdA"`
 	// In: query
-	ProjectID2 string `json:"id2"`
+	// Required: true
+	// Minimum: 1
+	ProjectVersionA int `json:"projectVersionA"`
+	// In: query
+	ProjectIDB string `json:"projectIdB"`
+	// In: query
+	// Required: true
+	// Minimum: 1
+	ProjectVersionB int `json:"projectVersionB"`
+	// Совместимый alias projectIdA; версия всё равно обязательна.
+	// In: query
+	ID1 string `json:"id1"`
+	// Совместимый alias projectIdB; версия всё равно обязательна.
+	// In: query
+	ID2 string `json:"id2"`
 }
 
-// ConfigComparisonResponse — ответ сравнения двух конфигураций.
+// ConfigComparisonResponse — фиксированные ревизии; без оценки эффективности.
 // swagger:response ConfigComparisonResponse
 type ConfigComparisonResponse struct {
-	ProjectA ConfigSnapshotDTO `json:"projectA"`
-	ProjectB ConfigSnapshotDTO `json:"projectB"`
-	Diff     ConfigDiffDTO     `json:"diff"`
+	EnterpriseID      string              `json:"enterpriseId"`
+	A                 ComparedRevisionDTO `json:"a"`
+	B                 ComparedRevisionDTO `json:"b"`
+	DifferenceMinor   *string             `json:"differenceMinor"`
+	DifferencePercent *string             `json:"differencePercent"`
+	Warnings          []CostIssueDTO      `json:"warnings"`
 }
-
-// ConfigSnapshotDTO — слепок одной конфигурации.
-type ConfigSnapshotDTO struct {
-	ProjectID         string               `json:"projectId"`
-	ProjectName       string               `json:"projectName"`
-	StructuralProfile StructuralProfileDTO `json:"structuralProfile"`
-	CostCalculation   CostCalculationDTO   `json:"costCalculation"`
+type ComparedRevisionDTO struct {
+	Identity  CalculationIdentityDTO `json:"identity"`
+	Name      string                 `json:"name"`
+	UpdatedAt string                 `json:"updatedAt"`
+	Cost      CostProjectionDTO      `json:"cost"`
+	Budget    BudgetProjectionDTO    `json:"budget"`
 }
 
 // StructuralProfileDTO — структурный профиль конфигурации.
@@ -282,43 +300,12 @@ type EchelonProfileDTO struct {
 	CoveredObjCount int    `json:"coveredObjCount"`
 }
 
-// ConfigDiffDTO — разница между двумя конфигурациями.
-type ConfigDiffDTO struct {
-	ObjectCountDelta     int              `json:"objectCountDelta"`
-	UnitCountDelta       int              `json:"unitCountDelta"`
-	EchelonCountDelta    int              `json:"echelonCountDelta"`
-	CategoryCountDelta   int              `json:"categoryCountDelta"`
-	ConflictCountDelta   int              `json:"conflictCountDelta"`
-	CoveredObjCountDelta int              `json:"coveredObjCountDelta"`
-	CostDeltaMln         float64          `json:"costDeltaMln"`
-	ByEchelon            []EchelonDiffDTO `json:"byEchelon"`
-}
-
-// EchelonDiffDTO — разница по одному эшелону.
-type EchelonDiffDTO struct {
-	LayerID            string `json:"layerId"`
-	LayerCode          string `json:"layerCode"`
-	LayerName          string `json:"layerName"`
-	ObjectCountDelta   int    `json:"objectCountDelta"`
-	UnitCountDelta     int    `json:"unitCountDelta"`
-	CategoryCountDelta int    `json:"categoryCountDelta"`
-	ConflictCountDelta int    `json:"conflictCountDelta"`
-	CoveredObjDelta    int    `json:"coveredObjDelta"`
-}
-
 // BudgetCheckResponse DTO результата проверки бюджета.
 // swagger:response BudgetCheckResponse
 type BudgetCheckResponse struct {
-	// Помещается ли в остаток бюджета
-	Fits bool `json:"fits"`
-	// Остаток бюджета в млн ₽
-	// Example: 500.0
-	RemainingMln float64 `json:"remainingMln"`
-	// Требуемая сумма для добавления в млн ₽
-	// Example: 700.0
-	RequiredMln float64 `json:"requiredMln"`
-	// Режим бюджета: "limited" | "unlimited"
-	// Enum: ["limited","unlimited"]
-	// Example: limited
-	BudgetMode string `json:"budgetMode"`
+	BasedOn                 ProjectRefDTO `json:"basedOn"`
+	Status                  string        `json:"status"`
+	ReasonCode              string        `json:"reasonCode"`
+	ProjectedSpentMinor     *string       `json:"projectedSpentMinor"`
+	ProjectedRemainingMinor *string       `json:"projectedRemainingMinor"`
 }

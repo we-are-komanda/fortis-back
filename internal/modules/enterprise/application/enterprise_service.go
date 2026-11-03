@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
+	"time"
 
 	"github.com/fortis/backend/internal/auth"
 
@@ -27,13 +29,17 @@ func NewEnterpriseService(repo domain.EnterpriseRepositoryInterface) *Enterprise
 	}
 }
 
-// Create is closed until a separate trusted provisioning path is approved.
+// Create creates an enterprise in the shared workspace.
 func (s *EnterpriseService) Create(ctx context.Context, userID, name, address string, status domain.EnterpriseStatus, latitude, longitude float64) (*domain.Enterprise, error) {
-	if err := auth.RequireIdentity(userID); err != nil {
+	now := time.Now().UTC()
+	enterprise, err := domain.NewEnterprise(uuid.NewString(), name, address, status, latitude, longitude, now, now)
+	if err != nil {
 		return nil, err
 	}
-	// ponytail: enterprise provisioning is operator-only; add a separate trusted use case if self-service is approved.
-	return nil, auth.ErrForbidden
+	if err := s.repo.Save(ctx, enterprise); err != nil {
+		return nil, err
+	}
+	return enterprise, nil
 }
 
 // Get возвращает предприятие по ID.
@@ -90,14 +96,11 @@ func (s *EnterpriseService) Delete(ctx context.Context, userID, id string) error
 	if err := s.CheckUserAccess(ctx, userID, id); err != nil {
 		return err
 	}
-	return auth.ErrForbidden
+	return s.repo.Delete(ctx, id)
 }
 
 // ListByUser возвращает предприятия, доступные пользователю, с пагинацией.
 func (s *EnterpriseService) ListByUser(ctx context.Context, userID string, limit, offset int) ([]*domain.Enterprise, int64, error) {
-	if err := auth.RequireIdentity(userID); err != nil {
-		return nil, 0, err
-	}
 	if limit <= 0 {
 		limit = 20
 	}
@@ -108,7 +111,7 @@ func (s *EnterpriseService) ListByUser(ctx context.Context, userID string, limit
 		offset = 0
 	}
 
-	enterprises, total, err := s.repo.FindAllByUserID(ctx, userID, limit, offset)
+	enterprises, total, err := s.repo.FindAll(ctx, limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list enterprises by user: %w", err)
 	}
@@ -116,35 +119,17 @@ func (s *EnterpriseService) ListByUser(ctx context.Context, userID string, limit
 	return enterprises, total, nil
 }
 
-// CheckUserAccess проверяет, имеет ли пользователь доступ к предприятию.
-// Missing enterprises and absent membership share ErrNotFound; storage failures remain errors.
+// CheckUserAccess retains the shared service contract but checks only existence.
+// User membership no longer restricts the shared workspace.
 func (s *EnterpriseService) CheckUserAccess(ctx context.Context, userID, enterpriseID string) error {
-	if err := auth.RequireIdentity(userID); err != nil {
-		return err
-	}
 	if enterpriseID == "" {
 		return auth.ErrNotFound
 	}
-
-	// Проверяем, что предприятие существует
-	if _, err := s.repo.FindByID(ctx, enterpriseID); err != nil {
-		if errors.Is(err, domain.ErrEnterpriseNotFound) {
-			return auth.ErrNotFound
-		}
-		return err
-	}
-
-	// Проверяем доступ через user_enterprises
-	hasAccess, err := s.repo.CheckUserEnterpriseAccess(ctx, userID, enterpriseID)
-	if err != nil {
-		return fmt.Errorf("check access: %w", err)
-	}
-
-	if !hasAccess {
+	_, err := s.repo.FindByID(ctx, enterpriseID)
+	if errors.Is(err, domain.ErrEnterpriseNotFound) {
 		return auth.ErrNotFound
 	}
-
-	return nil
+	return err
 }
 
 // AddUser is operator-only; an ordinary authenticated actor cannot grant membership.

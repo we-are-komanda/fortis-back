@@ -30,6 +30,10 @@ type projectRevisionService interface {
 	ExportRevision(context.Context, string, string, *int) (string, error)
 }
 
+type projectBudgetSourceService interface {
+	CreateWithBudgetSource(context.Context, string, string, string, string, string, domain.ProjectRef) (*domain.DefenseProject, error)
+}
+
 // DefenseProjectController — контроллер для импорта/экспорта проектов защиты.
 type DefenseProjectController struct {
 	service DefenseProjectServiceInterface
@@ -88,7 +92,7 @@ func (c *DefenseProjectController) Import(ctx *fasthttp.RequestCtx) {
 		switch {
 		case errors.Is(err, domain.ErrInvalidSchemaVersion):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
-		case errors.Is(err, domain.ErrInvalidProjectData), errors.Is(err, domain.ErrProjectOwnershipImmutable):
+		case errors.Is(err, domain.ErrInvalidProjectData), errors.Is(err, domain.ErrProjectOwnershipImmutable), errors.Is(err, domain.ErrInvalidConfigName):
 			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		case errors.Is(err, domain.ErrVersionConflict):
 			handlers.ErrorHandler(ctx, "version_conflict", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusConflict)
@@ -194,7 +198,13 @@ func (c *DefenseProjectController) Create(ctx *fasthttp.RequestCtx) {
 
 	var project *domain.DefenseProject
 	var err error
-	if key := string(ctx.Request.Header.Peek("Idempotency-Key")); key != "" {
+	if req.BudgetSource != nil {
+		if service, ok := c.service.(projectBudgetSourceService); ok {
+			project, err = service.CreateWithBudgetSource(ctx, handlers.ActorID(ctx), req.Name, req.EnterpriseID, req.ProjectJSON, string(ctx.Request.Header.Peek("Idempotency-Key")), domain.ProjectRef{ProjectID: req.BudgetSource.ProjectID, ProjectVersion: req.BudgetSource.ProjectVersion})
+		} else {
+			err = domain.ErrInvalidProjectData
+		}
+	} else if key := string(ctx.Request.Header.Peek("Idempotency-Key")); key != "" {
 		if service, ok := c.service.(projectRevisionService); ok {
 			project, err = service.CreateIdempotent(ctx, handlers.ActorID(ctx), req.Name, req.EnterpriseID, req.ProjectJSON, key)
 		} else {
@@ -225,7 +235,7 @@ func (c *DefenseProjectController) Create(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	resp := domainToProjectResponse(project)
+	resp := ProjectResponseFromDomain(project)
 	respJSON, err := json.Marshal(resp)
 	if err != nil {
 		handlers.ErrorHandler(ctx, "internal_error", "failed to marshal response", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
@@ -329,7 +339,7 @@ func (c *DefenseProjectController) Get(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	resp := domainToProjectResponse(project)
+	resp := ProjectResponseFromDomain(project)
 	respJSON, err := json.Marshal(resp)
 	if err != nil {
 		handlers.ErrorHandler(ctx, "internal_error", "failed to marshal response", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
@@ -366,14 +376,24 @@ func (c *DefenseProjectController) Update(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	project, err := c.service.UpdateProject(ctx, handlers.ActorID(ctx), projectID, req.Name, req.EnterpriseID, req.ProjectJSON, req.Version)
+	name := ""
+	if req.Name != nil {
+		name = *req.Name
+		if name == "" {
+			handlers.ErrorHandler(ctx, "validation_error", domain.ErrInvalidConfigName.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
+			return
+		}
+	}
+	project, err := c.service.UpdateProject(ctx, handlers.ActorID(ctx), projectID, name, req.EnterpriseID, req.ProjectJSON, req.Version)
 	if err != nil {
-		if handlers.AuthorizationError(ctx, err) {
+		if handlers.AuthorizationError(ctx, err) || handlers.FinancialError(ctx, err) {
 			return
 		}
 		switch {
 		case errors.Is(err, domain.ErrVersionRequired):
 			handlers.ErrorHandler(ctx, "version_required", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
+		case errors.Is(err, domain.ErrInvalidConfigName):
+			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
 		case errors.Is(err, domain.ErrProjectNotFound):
 			handlers.ErrorHandler(ctx, "not_found", "project not found", &handlers.ResponseBody{}, fasthttp.StatusNotFound)
 		case errors.Is(err, domain.ErrInvalidSchemaVersion):
@@ -388,7 +408,7 @@ func (c *DefenseProjectController) Update(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	resp := domainToProjectResponse(project)
+	resp := ProjectResponseFromDomain(project)
 	respJSON, err := json.Marshal(resp)
 	if err != nil {
 		handlers.ErrorHandler(ctx, "internal_error", "failed to marshal response", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
@@ -446,6 +466,9 @@ func requestedProjectVersion(ctx *fasthttp.RequestCtx) (*int, bool) {
 }
 
 func projectRevisionError(ctx *fasthttp.RequestCtx, err error) bool {
+	if handlers.FinancialError(ctx, err) {
+		return true
+	}
 	switch {
 	case errors.Is(err, domain.ErrRevisionNotFound):
 		handlers.ErrorHandler(ctx, "revision_not_found", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusNotFound)

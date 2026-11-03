@@ -12,6 +12,9 @@ import (
 // RequestIDKey is populated by the HTTP middleware from a server-generated UUID.
 const RequestIDKey = "fortis.request_id"
 
+// AnonymousActorID labels shared-workspace writes; it is not a user account.
+const AnonymousActorID = "00000000-0000-0000-0000-000000000000"
+
 func RequestID(ctx context.Context) string {
 	if id, ok := ctx.Value(RequestIDKey).(string); ok {
 		if parsed, err := uuid.Parse(id); err == nil {

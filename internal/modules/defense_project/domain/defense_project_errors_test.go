@@ -29,7 +29,7 @@ func TestSentinelErrors(t *testing.T) {
 		{
 			name: "ErrInvalidConfigName",
 			err:  ErrInvalidConfigName,
-			msg:  "invalid configuration name: name is required",
+			msg:  "invalid configuration name: require 1 to 120 characters after trimming",
 		},
 		{
 			name: "ErrVersionConflict",

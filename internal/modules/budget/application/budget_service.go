@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	defenseApp "github.com/fortis/backend/internal/modules/defense_project/application"
 	"math"
@@ -44,22 +43,8 @@ func (s *BudgetService) UpdateBudgetConfig(ctx context.Context, userID string, p
 	if _, err := s.projects.GetProject(ctx, userID, projectID); err != nil {
 		return err
 	}
-	existing, err := s.GetBudgetConfig(ctx, userID, projectID)
-	if err != nil {
-		if errors.Is(err, budgetDomain.ErrBudgetConfigNotFound) {
-			config, createErr := budgetDomain.NewBudgetConfig(projectID, mode, amountMln)
-			if createErr != nil {
-				return createErr
-			}
-			return s.budgetRepo.Save(ctx, config)
-		}
-		return err
-	}
-
-	if updateErr := existing.SetBudget(mode, amountMln); updateErr != nil {
-		return updateErr
-	}
-	return s.budgetRepo.Save(ctx, existing)
+	// Legacy callers cannot bypass the versioned transaction.
+	return defenseDomain.ErrVersionRequired
 }
 
 // CalculateCost выполняет полный расчёт стоимости конфигурации проекта.
@@ -130,42 +115,45 @@ func round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
 
-// CompareConfigs сравнивает две конфигурации проектов.
-func (s *BudgetService) CompareConfigs(ctx context.Context, userID string, projectID1, projectID2 string) (*budgetDomain.ConfigComparison, error) {
-	if projectID1 == "" || projectID2 == "" {
+// CompareConfigs authorizes both pinned revisions before evaluating either side.
+func (s *BudgetService) CompareConfigs(ctx context.Context, actor string, a, b defenseDomain.ProjectRef) (*budgetDomain.RevisionComparison, error) {
+	if a.ProjectID == "" || b.ProjectID == "" {
 		return nil, budgetDomain.ErrBothIDsRequired
 	}
-
-	projectA, err := s.projects.GetProject(ctx, userID, projectID1)
-	if err != nil {
-		return nil, fmt.Errorf("load project A: %w", err)
+	if a.ProjectVersion <= 0 || b.ProjectVersion <= 0 {
+		return nil, defenseDomain.ErrVersionRequired
 	}
-
-	projectB, err := s.projects.GetProject(ctx, userID, projectID2)
+	pa, err := s.projects.GetRevision(ctx, actor, a.ProjectID, &a.ProjectVersion)
 	if err != nil {
-		return nil, fmt.Errorf("load project B: %w", err)
+		return nil, err
 	}
-
-	calcA, err := s.CalculateCost(ctx, userID, projectID1)
+	pb, err := s.projects.GetRevision(ctx, actor, b.ProjectID, &b.ProjectVersion)
 	if err != nil {
-		return nil, fmt.Errorf("calculate cost for A: %w", err)
+		return nil, err
 	}
-
-	calcB, err := s.CalculateCost(ctx, userID, projectID2)
+	if pa.EnterpriseID() != pb.EnterpriseID() || (a.ProjectID == b.ProjectID && a.ProjectVersion == b.ProjectVersion) {
+		return nil, budgetDomain.ErrIncompatibleProjects
+	}
+	side := func(p *defenseDomain.DefenseProject) (budgetDomain.ComparedRevision, error) {
+		cost, err := s.projectCost(ctx, p)
+		if err != nil {
+			return budgetDomain.ComparedRevision{}, err
+		}
+		config, _, err := budgetFromSnapshot(p)
+		if err != nil {
+			return budgetDomain.ComparedRevision{}, err
+		}
+		return budgetDomain.NewComparedRevision(p.Name(), p.UpdatedAt(), budgetDomain.NewBudgetProjection(config, cost)), nil
+	}
+	ca, err := side(pa)
 	if err != nil {
-		return nil, fmt.Errorf("calculate cost for B: %w", err)
+		return nil, err
 	}
-
-	profileA := BuildStructuralProfile(projectA, calcA)
-	profileB := BuildStructuralProfile(projectB, calcB)
-
-	snapshotA := budgetDomain.NewConfigSnapshot(projectID1, projectA.ProjectName(), profileA, *calcA)
-	snapshotB := budgetDomain.NewConfigSnapshot(projectID2, projectB.ProjectName(), profileB, *calcB)
-
-	diff := computeDiff(profileA, profileB, *calcA, *calcB)
-
-	comparison := budgetDomain.NewConfigComparison(snapshotA, snapshotB, diff)
-	return &comparison, nil
+	cb, err := side(pb)
+	if err != nil {
+		return nil, err
+	}
+	return budgetDomain.NewRevisionComparison(pa.EnterpriseID(), ca, cb), nil
 }
 
 // BuildStructuralProfile строит структурный профиль из DefenseProject.
@@ -273,71 +261,5 @@ func BuildStructuralProfile(project *defenseDomain.DefenseProject, calc *budgetD
 		totalCovered,
 		totalMln,
 		byEchelon,
-	)
-}
-
-// computeDiff вычисляет разницу между двумя структурными профилями и расчётами стоимости.
-func computeDiff(profileA, profileB budgetDomain.StructuralProfile, calcA, calcB budgetDomain.CostCalculation) budgetDomain.ConfigDiff {
-	// Разница по эшелонам — объединяем по LayerID
-	echelonMapA := make(map[string]budgetDomain.StructuralEchelonProfile)
-	for _, ep := range profileA.ByEchelon() {
-		echelonMapA[ep.LayerID()] = ep
-	}
-
-	echelonMapB := make(map[string]budgetDomain.StructuralEchelonProfile)
-	for _, ep := range profileB.ByEchelon() {
-		echelonMapB[ep.LayerID()] = ep
-	}
-
-	// Собираем все LayerID из обоих профилей
-	allLayerIDs := make(map[string]struct{})
-	for _, ep := range profileA.ByEchelon() {
-		allLayerIDs[ep.LayerID()] = struct{}{}
-	}
-	for _, ep := range profileB.ByEchelon() {
-		allLayerIDs[ep.LayerID()] = struct{}{}
-	}
-
-	byEchelonDiff := make([]budgetDomain.EchelonDiff, 0, len(allLayerIDs))
-	for layerID := range allLayerIDs {
-		epA := echelonMapA[layerID]
-		epB := echelonMapB[layerID]
-
-		layerCode := epA.LayerCode()
-		if layerCode == "" {
-			layerCode = epB.LayerCode()
-		}
-		layerName := epA.LayerName()
-		if layerName == "" {
-			layerName = epB.LayerName()
-		}
-
-		diff := budgetDomain.NewEchelonDiff(
-			layerID,
-			layerCode,
-			layerName,
-			epB.ObjectCount()-epA.ObjectCount(),
-			epB.UnitCount()-epA.UnitCount(),
-			epB.CategoryCount()-epA.CategoryCount(),
-			epB.ConflictCount()-epA.ConflictCount(),
-			epB.CoveredObjCount()-epA.CoveredObjCount(),
-		)
-		byEchelonDiff = append(byEchelonDiff, diff)
-	}
-
-	// Если нет эшелонов — пустой слайс, но не nil
-	if byEchelonDiff == nil {
-		byEchelonDiff = []budgetDomain.EchelonDiff{}
-	}
-
-	return budgetDomain.NewConfigDiff(
-		profileB.ObjectCount()-profileA.ObjectCount(),
-		profileB.UnitCount()-profileA.UnitCount(),
-		profileB.EchelonCount()-profileA.EchelonCount(),
-		profileB.CategoryCount()-profileA.CategoryCount(),
-		profileB.ConflictCount()-profileA.ConflictCount(),
-		profileB.CoveredObjCount()-profileA.CoveredObjCount(),
-		round2(calcB.TotalMln()-calcA.TotalMln()),
-		byEchelonDiff,
 	)
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/fortis/backend/internal/audit"
 	"github.com/fortis/backend/internal/auth"
+	budgetDocument "github.com/fortis/backend/internal/modules/budget/document"
 	budgetDomain "github.com/fortis/backend/internal/modules/budget/domain"
 	budgetInfra "github.com/fortis/backend/internal/modules/budget/infrastructure"
 	"github.com/fortis/backend/internal/modules/defense_project/document"
@@ -38,9 +39,6 @@ func (r *DefenseProjectRepository) Commit(ctx context.Context, project *domain.D
 					}
 					return err
 				}
-				if err := lockProjectMembership(tx, write.ActorID, current.EnterpriseID); err != nil {
-					return err
-				}
 				if replay.PayloadDigest != write.PayloadDigest {
 					return domain.ErrIdempotencyConflict
 				}
@@ -49,6 +47,7 @@ func (r *DefenseProjectRepository) Commit(ctx context.Context, project *domain.D
 			}
 		}
 		candidate := *project
+		currentDocument := ""
 		if !write.Create {
 			var current DefenseProjectModel
 			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", project.ProjectID()).First(&current).Error; err != nil {
@@ -57,25 +56,80 @@ func (r *DefenseProjectRepository) Commit(ctx context.Context, project *domain.D
 				}
 				return err
 			}
-			if err := lockProjectMembership(tx, write.ActorID, current.EnterpriseID); err != nil {
-				return err
-			}
 			if current.EnterpriseID != project.EnterpriseID() {
 				return domain.ErrProjectOwnershipImmutable
 			}
 			if current.Version != project.Version() {
 				return domain.ErrVersionConflict
 			}
+			currentDocument = current.ProjectData
 			candidate.SetVersion(current.Version + 1)
 		} else {
-			if err := lockProjectMembership(tx, write.ActorID, project.EnterpriseID()); err != nil {
-				return err
-			}
 			candidate.SetVersion(1)
 		}
 		model, err := ToModel(&candidate)
 		if err != nil {
 			return err
+		}
+		// Budget authority is read while holding the same project locks as
+		// the write. Project JSON never supplies or overrides this configuration.
+		budgetRaw := "null"
+		if !write.Create {
+			var currentBudget budgetInfra.BudgetConfigModel
+			err := tx.Where("project_id = ?", model.ID).Take(&currentBudget).Error
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			if err == nil {
+				budgetRaw = currentBudget.ConfigData
+			}
+		} else if write.BudgetSource != nil {
+			var source DefenseProjectModel
+			if err := tx.Clauses(clause.Locking{Strength: "KEY SHARE"}).Where("id = ?", write.BudgetSource.ProjectID).Take(&source).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return auth.ErrNotFound
+				}
+				return err
+			}
+			revision, err := readRevision(tx, source.ID, write.BudgetSource.ProjectVersion)
+			if err != nil {
+				return err
+			}
+			var snapshot struct {
+				Budget json.RawMessage `json:"budget"`
+			}
+			if err := json.Unmarshal([]byte(revision.Snapshot()), &snapshot); err != nil {
+				return err
+			}
+			budgetRaw = string(snapshot.Budget)
+		}
+		if write.BudgetJSON != nil {
+			if write.Create || write.Operation != "budget" {
+				return domain.ErrInvalidProjectData
+			}
+			budgetRaw = *write.BudgetJSON
+		}
+		config, err := budgetDocument.ReadBudget(model.ID, budgetRaw)
+		if err != nil {
+			return err
+		}
+		canonicalBudget, err := budgetDocument.WriteBudget(config)
+		if err != nil {
+			return err
+		}
+		identity := budgetDomain.NewCalculationIdentity(model.ID, model.Version, budgetDomain.CostCalculationV1, "", nil)
+		cost, err := budgetDocument.Calculate(model.ProjectData, identity)
+		if err != nil {
+			return err
+		}
+		if write.Operation != "budget" {
+			var currentCost *budgetDomain.CostProjection
+			if currentDocument != "" {
+				currentCost, _ = budgetDocument.Calculate(currentDocument, identity)
+			}
+			if err := budgetDomain.CheckCandidateBudget(config, cost, currentCost).Err(); err != nil {
+				return err
+			}
 		}
 		if write.Create {
 			if err := tx.Create(model).Error; err != nil {
@@ -92,8 +146,8 @@ func (r *DefenseProjectRepository) Commit(ctx context.Context, project *domain.D
 				return domain.ErrVersionConflict
 			}
 		}
-		if write.BudgetJSON != nil {
-			budget := budgetInfra.BudgetConfigModel{ProjectID: model.ID, ConfigData: *write.BudgetJSON}
+		{
+			budget := budgetInfra.BudgetConfigModel{ProjectID: model.ID, ConfigData: canonicalBudget}
 			if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "project_id"}}, DoUpdates: clause.AssignmentColumns([]string{"config_data", "updated_at"})}).Create(&budget).Error; err != nil {
 				return err
 			}
@@ -169,33 +223,11 @@ func (r *DefenseProjectRepository) DeleteAuthorized(ctx context.Context, actorID
 			}
 			return err
 		}
-		if err := auth.RequireIdentity(actorID); err != nil {
-			return err
-		}
-		if err := lockProjectMembership(tx, actorID, current.EnterpriseID); err != nil {
-			return err
-		}
 		if err := tx.Delete(&current).Error; err != nil {
 			return err
 		}
 		return audit.Append(tx, audit.Event{ActorID: actorID, EnterpriseID: &current.EnterpriseID, EntityType: "project", EntityID: id, Action: "project.delete", PreviousVersion: &current.Version, RequestID: audit.RequestID(ctx)})
 	})
-}
-
-// The application already authorizes; this persisted guard closes revoke/write races.
-func lockProjectMembership(tx *gorm.DB, actorID, enterpriseID string) error {
-	if actorID == "" {
-		return nil
-	} // Trusted repository-only fixtures/provisioning have no browser actor.
-	if enterpriseID == "" {
-		return auth.ErrNotFound
-	}
-	var membership struct{ UserID string }
-	err := tx.Table("user_enterprises").Clauses(clause.Locking{Strength: "SHARE"}).Where("user_id = ? AND enterprise_id = ?", actorID, enterpriseID).Take(&membership).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return auth.ErrNotFound
-	}
-	return err
 }
 
 func reserveProjectRequest(tx *gorm.DB, write domain.ProjectWrite) (*ProjectIdempotencyModel, error) {

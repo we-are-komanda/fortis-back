@@ -19,6 +19,8 @@ import (
 	"github.com/fortis/backend/internal/middleware"
 	demoApp "github.com/fortis/backend/internal/modules/demo_request/application"
 	demoUi "github.com/fortis/backend/internal/modules/demo_request/ui"
+	enterpriseApp "github.com/fortis/backend/internal/modules/enterprise/application"
+	enterpriseUi "github.com/fortis/backend/internal/modules/enterprise/ui"
 	"github.com/fortis/backend/internal/probe"
 	"github.com/valyala/fasthttp"
 	"go.uber.org/dig"
@@ -60,16 +62,10 @@ func (app *Application) registerTechUrls(r *router.Router) error {
 func (app *Application) registerCoreDependencies() {
 	err := app.container.Provide(func() config.Cors { return cnf.Cors })
 	processError(err)
-	err = app.container.Provide(func() config.Access { return cnf.Access })
-	processError(err)
-	err = app.container.Provide(func() config.Auth { return cnf.Auth })
-	processError(err)
 	err = app.container.Provide(func() config.Postgres { return cnf.Postgres })
 	processError(err)
 
 	err = app.container.Provide(middleware.NewCors)
-	processError(err)
-	err = app.container.Provide(middleware.NewAccess)
 	processError(err)
 	err = app.container.Provide(middleware.NewHttpResponse)
 	processError(err)
@@ -96,14 +92,11 @@ func (app *Application) registerMiddleware(next fasthttp.RequestHandler) (handle
 			swagger *middleware.Swagger,
 			prometheus *middleware.Prometheus,
 			httpResponse *middleware.HttpResponse,
-			authRequired *middleware.AuthRequired,
-			access *middleware.Access,
 		) {
 			handler = cors.Process(handler)
 			handler = swagger.Process(handler)
 			handler = prometheus.Process(handler)
 			handler = httpResponse.Process(handler)
-			handler = authRequired.Process(handler)
 		})
 
 	if err != nil {
@@ -144,6 +137,11 @@ func (app *Application) Run() {
 	slog.Info(fmt.Sprintf("work_mode=%s", cnf.WorkMode))
 
 	switch cnf.WorkMode {
+	case "enterprise-provision":
+		// Trusted local operator only: no listener, JWT route or member privileges.
+		processError(app.container.Invoke(func(service *enterpriseApp.ProvisionService) error {
+			return enterpriseUi.WriteProvision(context.Background(), service, os.Stdout, os.Args[1:])
+		}))
 	case "demo-request-registry":
 		// Local operator command requires the process's OS and database privileges.
 		flags := flag.NewFlagSet("demo-request-registry", flag.ExitOnError)

@@ -20,7 +20,7 @@ import (
 type importPayload struct {
 	SchemaVersion    int                   `json:"schemaVersion"`
 	ProjectID        string                `json:"projectId"`
-	Name             string                `json:"name,omitempty"`
+	Name             *string               `json:"name,omitempty"`
 	EnterpriseID     string                `json:"enterpriseId,omitempty"`
 	ProjectName      string                `json:"projectName"`
 	BaseObject       importProtectedObject `json:"baseObject"`
@@ -148,12 +148,27 @@ func (s *DefenseProjectService) CreateIdempotent(ctx context.Context, userID, na
 	return s.createFromJSON(ctx, userID, name, enterpriseID, rawJSON, key)
 }
 
-func (s *DefenseProjectService) createFromJSON(ctx context.Context, userID, name, enterpriseID, rawJSON, key string) (*domain.DefenseProject, error) {
+func (s *DefenseProjectService) CreateWithBudgetSource(ctx context.Context, userID, name, enterpriseID, rawJSON, key string, source domain.ProjectRef) (*domain.DefenseProject, error) {
+	if source.ProjectVersion <= 0 {
+		return nil, domain.ErrInvalidProjectData
+	}
+	if _, err := uuid.Parse(source.ProjectID); err != nil {
+		return nil, domain.ErrInvalidProjectData
+	}
+	// Commit locks the source project before copying its revision.
+	if _, err := s.GetRevision(ctx, userID, source.ProjectID, &source.ProjectVersion); err != nil {
+		return nil, err
+	}
+	return s.createFromJSON(ctx, userID, name, enterpriseID, rawJSON, key, &source)
+}
+
+func (s *DefenseProjectService) createFromJSON(ctx context.Context, userID, name, enterpriseID, rawJSON, key string, budgetSource ...*domain.ProjectRef) (*domain.DefenseProject, error) {
 	if err := s.access.CheckUserAccess(ctx, userID, enterpriseID); err != nil {
 		return nil, err
 	}
-	if name == "" {
-		return nil, domain.ErrInvalidConfigName
+	name, err := domain.NormalizeConfigName(name)
+	if err != nil {
+		return nil, err
 	}
 
 	var payload importPayload
@@ -205,7 +220,7 @@ func (s *DefenseProjectService) createFromJSON(ctx context.Context, userID, name
 	}
 
 	project.SetDocument(rawJSON)
-	if err := s.saveProject(ctx, project, userID, true, "create", key, nil); err != nil {
+	if err := s.saveProject(ctx, project, userID, true, "create", key, nil, budgetSource...); err != nil {
 		return nil, fmt.Errorf("save project: %w", err)
 	}
 
@@ -222,9 +237,6 @@ func (s *DefenseProjectService) ImportIdempotent(ctx context.Context, userID, ra
 }
 
 func (s *DefenseProjectService) importProject(ctx context.Context, userID, rawJSON, key string) (*domain.DefenseProject, error) {
-	if err := auth.RequireIdentity(userID); err != nil {
-		return nil, err
-	}
 	var payload importPayload
 	if err := json.Unmarshal([]byte(rawJSON), &payload); err != nil {
 		return nil, fmt.Errorf("unmarshal project json: %w", domain.ErrInvalidProjectData)
@@ -249,6 +261,15 @@ func (s *DefenseProjectService) importProject(ctx context.Context, userID, rawJS
 	if payload.BaseObject.ID == "" || payload.BaseObject.Name == "" {
 		return nil, fmt.Errorf("baseObject: %w", domain.ErrInvalidProjectData)
 	}
+	// Schema-one documents may omit a separate configuration label.
+	name := payload.ProjectName
+	if payload.Name != nil {
+		name = *payload.Name
+	}
+	name, err := domain.NormalizeConfigName(name)
+	if err != nil {
+		return nil, err
+	}
 
 	// Сборка доменного объекта
 	mode := domain.DefenseProjectModeView
@@ -265,7 +286,7 @@ func (s *DefenseProjectService) importProject(ctx context.Context, userID, rawJS
 
 	project, err := domain.NewDefenseProject(
 		projectID,
-		payload.Name,
+		name,
 		payload.EnterpriseID,
 		payload.ProjectName,
 		domain.NewProtectedObject(
@@ -302,8 +323,9 @@ func (s *DefenseProjectService) CreateProject(ctx context.Context, userID string
 	if err := s.access.CheckUserAccess(ctx, userID, enterpriseID); err != nil {
 		return nil, err
 	}
-	if name == "" {
-		return nil, domain.ErrInvalidConfigName
+	name, err := domain.NormalizeConfigName(name)
+	if err != nil {
+		return nil, err
 	}
 
 	now := time.Now().UTC()
@@ -329,9 +351,6 @@ func (s *DefenseProjectService) CreateProject(ctx context.Context, userID string
 
 // ListProjects возвращает список проектов с пагинацией.
 func (s *DefenseProjectService) ListProjects(ctx context.Context, userID, enterpriseID string, limit, offset int) ([]*domain.DefenseProject, int64, error) {
-	if err := auth.RequireIdentity(userID); err != nil {
-		return nil, 0, err
-	}
 	if limit <= 0 {
 		limit = 50
 	}
@@ -352,17 +371,11 @@ func (s *DefenseProjectService) ListProjects(ctx context.Context, userID, enterp
 
 // GetProject возвращает проект по ID.
 func (s *DefenseProjectService) GetProject(ctx context.Context, userID, id string) (*domain.DefenseProject, error) {
-	if err := auth.RequireIdentity(userID); err != nil {
-		return nil, err
-	}
 	project, err := s.repo.FindByID(ctx, id)
 	if errors.Is(err, domain.ErrProjectNotFound) {
 		return nil, auth.ErrNotFound
 	}
 	if err != nil {
-		return nil, err
-	}
-	if err := s.access.CheckUserAccess(ctx, userID, project.EnterpriseID()); err != nil {
 		return nil, err
 	}
 	return project, nil
@@ -410,7 +423,11 @@ func (s *DefenseProjectService) UpdateProject(ctx context.Context, userID string
 		return s.overwriteProjectContent(ctx, userID, project, name, projectJSON)
 	}
 
-	if name != "" {
+	if name != "" && name != project.Name() {
+		name, err = domain.NormalizeConfigName(name)
+		if err != nil {
+			return nil, err
+		}
 		project.SetName(name)
 	}
 
@@ -452,11 +469,18 @@ func (s *DefenseProjectService) overwriteProjectContent(ctx context.Context, use
 
 	// Итоговое имя: явный аргумент name важнее, затем payload.Name, затем текущее имя.
 	finalName := existing.Name()
-	if payload.Name != "" {
-		finalName = payload.Name
+	if payload.Name != nil {
+		finalName = *payload.Name
 	}
 	if name != "" {
 		finalName = name
+	}
+	if finalName != existing.Name() {
+		var err error
+		finalName, err = domain.NormalizeConfigName(finalName)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	finalEnterpriseID := existing.EnterpriseID()

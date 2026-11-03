@@ -83,12 +83,12 @@ func (m *mockRepo) RemoveUserFromEnterprise(ctx context.Context, userID, enterpr
 	return nil
 }
 
-func TestCreate_OperatorOnly(t *testing.T) {
+func TestCreate_Anonymous(t *testing.T) {
 	repo := newMockRepo()
 	e, err := NewEnterpriseService(repo).Create(context.Background(), "actor", "Test", "Address", domain.EnterpriseStatusActive, 55, 37)
-	require.ErrorIs(t, err, auth.ErrForbidden)
-	assert.Nil(t, e)
-	assert.Empty(t, repo.enterprises)
+	require.NoError(t, err)
+	assert.NotNil(t, e)
+	assert.Len(t, repo.enterprises, 1)
 }
 
 func TestCreate_EmptyName(t *testing.T) {
@@ -188,17 +188,17 @@ func TestUpdate_NotFound(t *testing.T) {
 	assert.Nil(t, e)
 }
 
-func TestDelete_OperatorOnly(t *testing.T) {
+func TestDelete_Anonymous(t *testing.T) {
 	repo := newMockRepo()
 	svc := NewEnterpriseService(repo)
 
 	created, _ := provisionEnterprise(repo, "Тестовое предприятие", "Адрес", domain.EnterpriseStatusActive, 55.75, 37.62)
 
 	err := svc.Delete(context.Background(), "actor", created.ID())
-	require.ErrorIs(t, err, auth.ErrForbidden)
+	require.NoError(t, err)
 
 	_, err = svc.Get(context.Background(), "actor", created.ID())
-	assert.NoError(t, err)
+	assert.ErrorIs(t, err, auth.ErrNotFound)
 }
 
 func TestDelete_NotFound(t *testing.T) {
