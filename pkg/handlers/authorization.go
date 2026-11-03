@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 
+	"github.com/fortis/backend/internal/audit"
 	"github.com/fortis/backend/internal/auth"
 	"github.com/valyala/fasthttp"
 )
@@ -24,6 +25,6 @@ func AuthorizationError(ctx *fasthttp.RequestCtx, err error) bool {
 }
 
 func ActorID(ctx *fasthttp.RequestCtx) string {
-	id, _ := ctx.UserValue("userID").(string)
-	return id
+	// Anonymous audit namespace, never derived from request credentials.
+	return audit.AnonymousActorID
 }

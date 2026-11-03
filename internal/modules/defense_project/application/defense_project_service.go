@@ -155,7 +155,7 @@ func (s *DefenseProjectService) CreateWithBudgetSource(ctx context.Context, user
 	if _, err := uuid.Parse(source.ProjectID); err != nil {
 		return nil, domain.ErrInvalidProjectData
 	}
-	// Commit repeats source authorization under a membership lock before copying.
+	// Commit locks the source project before copying its revision.
 	if _, err := s.GetRevision(ctx, userID, source.ProjectID, &source.ProjectVersion); err != nil {
 		return nil, err
 	}
@@ -237,9 +237,6 @@ func (s *DefenseProjectService) ImportIdempotent(ctx context.Context, userID, ra
 }
 
 func (s *DefenseProjectService) importProject(ctx context.Context, userID, rawJSON, key string) (*domain.DefenseProject, error) {
-	if err := auth.RequireIdentity(userID); err != nil {
-		return nil, err
-	}
 	var payload importPayload
 	if err := json.Unmarshal([]byte(rawJSON), &payload); err != nil {
 		return nil, fmt.Errorf("unmarshal project json: %w", domain.ErrInvalidProjectData)
@@ -354,9 +351,6 @@ func (s *DefenseProjectService) CreateProject(ctx context.Context, userID string
 
 // ListProjects возвращает список проектов с пагинацией.
 func (s *DefenseProjectService) ListProjects(ctx context.Context, userID, enterpriseID string, limit, offset int) ([]*domain.DefenseProject, int64, error) {
-	if err := auth.RequireIdentity(userID); err != nil {
-		return nil, 0, err
-	}
 	if limit <= 0 {
 		limit = 50
 	}
@@ -377,17 +371,11 @@ func (s *DefenseProjectService) ListProjects(ctx context.Context, userID, enterp
 
 // GetProject возвращает проект по ID.
 func (s *DefenseProjectService) GetProject(ctx context.Context, userID, id string) (*domain.DefenseProject, error) {
-	if err := auth.RequireIdentity(userID); err != nil {
-		return nil, err
-	}
 	project, err := s.repo.FindByID(ctx, id)
 	if errors.Is(err, domain.ErrProjectNotFound) {
 		return nil, auth.ErrNotFound
 	}
 	if err != nil {
-		return nil, err
-	}
-	if err := s.access.CheckUserAccess(ctx, userID, project.EnterpriseID()); err != nil {
 		return nil, err
 	}
 	return project, nil

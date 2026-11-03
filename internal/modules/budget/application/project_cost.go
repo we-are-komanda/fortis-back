@@ -19,6 +19,11 @@ func (s *BudgetService) ProjectCost(ctx context.Context, actorID, projectID stri
 	return s.projectCost(ctx, project)
 }
 
+// FrozenCost evaluates an already authorized immutable revision for another application module.
+func (s *BudgetService) FrozenCost(ctx context.Context, project *projectDomain.DefenseProject) (*domain.CostProjection, error) {
+	return s.projectCost(ctx, project)
+}
+
 // projectCost evaluates the already authorized immutable revision.
 func (s *BudgetService) projectCost(ctx context.Context, project *projectDomain.DefenseProject) (*domain.CostProjection, error) {
 	calculator := project.CostCalculationVersion()

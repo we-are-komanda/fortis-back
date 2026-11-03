@@ -2,355 +2,77 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"fmt"
-	"github.com/fortis/backend/internal/auth"
-	defenseAssetApp "github.com/fortis/backend/internal/modules/defense_asset/application"
-	defenseApp "github.com/fortis/backend/internal/modules/defense_project/application"
-
-	budgetApp "github.com/fortis/backend/internal/modules/budget/application"
-	budgetDomain "github.com/fortis/backend/internal/modules/budget/domain"
-	defenseAssetDomain "github.com/fortis/backend/internal/modules/defense_asset/domain"
-	defenseDomain "github.com/fortis/backend/internal/modules/defense_project/domain"
-	reportDomain "github.com/fortis/backend/internal/modules/report/domain"
+	budgetDocument "github.com/fortis/backend/internal/modules/budget/document"
+	budget "github.com/fortis/backend/internal/modules/budget/domain"
+	project "github.com/fortis/backend/internal/modules/defense_project/domain"
+	"github.com/fortis/backend/internal/modules/report/domain"
+	"github.com/google/uuid"
+	"time"
 )
 
-// BudgetServiceInterface — интерфейс сервиса бюджета для отчёта.
+type ProjectService interface {
+	GetRevision(context.Context, string, string, *int) (*project.DefenseProject, error)
+}
 type BudgetServiceInterface interface {
-	CalculateCost(ctx context.Context, userID, projectID string) (*budgetDomain.CostCalculation, error)
+	FrozenCost(context.Context, *project.DefenseProject) (*budget.CostProjection, error)
 }
 
-// ReportService — сервис для построения отчёта GIS MVP.
+// PayloadRenderer is the transport serialization boundary; only allowlisted JSON is persisted.
+type PayloadRenderer func(*domain.ReportDraft) (string, error)
 type ReportService struct {
-	projects  *defenseApp.DefenseProjectService
-	budgetSvc BudgetServiceInterface
-	assets    *defenseAssetApp.DefenseAssetService
+	projects   ProjectService
+	finance    BudgetServiceInterface
+	repository domain.ReportRepository
+	render     PayloadRenderer
 }
 
-// NewReportService создаёт новый ReportService.
-func NewReportService(
-	projects *defenseApp.DefenseProjectService,
-	budgetSvc BudgetServiceInterface,
-	assets *defenseAssetApp.DefenseAssetService,
-) *ReportService {
-	return &ReportService{
-		projects:  projects,
-		budgetSvc: budgetSvc,
-		assets:    assets,
-	}
+func NewReportService(projects ProjectService, finance BudgetServiceInterface, repository domain.ReportRepository, render PayloadRenderer) *ReportService {
+	return &ReportService{projects, finance, repository, render}
 }
-
-// GetReport собирает полный отчёт для проекта.
-func (s *ReportService) GetReport(ctx context.Context, userID, projectID string, hideCost bool) (*reportDomain.ReportPayload, error) {
-	if projectID == "" {
-		return nil, reportDomain.ErrInvalidProjectID
+func (s *ReportService) GetReport(ctx context.Context, actor string, q GetReportQuery) (*domain.IssuedReport, error) {
+	if q.ReportID != "" {
+		return s.repository.FindByID(ctx, actor, q.ReportID)
 	}
-
-	// 1. Загрузить DefenseProject
-	project, err := s.projects.GetProject(ctx, userID, projectID)
-	if err != nil {
-		if errors.Is(err, defenseDomain.ErrProjectNotFound) {
-			return nil, reportDomain.ErrProjectNotFound
-		}
-		return nil, fmt.Errorf("load project: %w", err)
-	}
-
-	// 2. Вычислить CostCalculation
-	calc, err := s.budgetSvc.CalculateCost(ctx, userID, projectID)
-	if err != nil {
-		return nil, fmt.Errorf("calculate cost: %w", err)
-	}
-
-	// 3. Построить StructuralProfile
-	profile := budgetApp.BuildStructuralProfile(project, calc)
-
-	// 4. Преобразовать placedObjects → ReportPlacedObject[]
-	objects, err := s.buildObjectLines(ctx, userID, project, calc)
+	version := q.Key.ProjectVersion()
+	p, err := s.projects.GetRevision(ctx, actor, q.Key.ProjectID(), &version)
 	if err != nil {
 		return nil, err
 	}
-
-	// 5. Преобразовать layers → ReportLayer[]
-	layers := buildReportLayers(project)
-
-	// 6. Построить baseObject
-	baseObj := buildReportBaseObject(project)
-
-	// 7. Если hideCost == true — обнулить все *Mln поля
-	if hideCost {
-		zeroCostFields(calc)
-		profile = zeroProfileCost(profile)
-		objects = zeroObjectCostFields(objects)
+	existing, err := s.repository.FindByKey(ctx, actor, q.Key)
+	if err == nil {
+		return existing, nil
 	}
-
-	payload := reportDomain.NewReportPayload(
-		project.ProjectID(),
-		project.ProjectName(),
-		baseObj,
-		layers,
-		objects,
-		*calc,
-		profile,
-		hideCost,
-	)
-
-	return payload, nil
-}
-
-// buildReportLayers преобразует слои проекта в ReportLayer.
-func buildReportLayers(project *defenseDomain.DefenseProject) []reportDomain.ReportLayer {
-	layers := project.Layers()
-	result := make([]reportDomain.ReportLayer, 0, len(layers))
-
-	for _, l := range layers {
-		var centerLat, centerLng, radiusM, minRadiusM, maxRadiusM *float64
-		geom := l.Geometry()
-		if geom.Center() != nil {
-			center := *geom.Center()
-			lat := center.Lat()
-			lng := center.Lng()
-			centerLat = &lat
-			centerLng = &lng
+	if !errors.Is(err, domain.ErrReportNotFound) {
+		return nil, err
+	}
+	var cost *budget.CostProjection
+	var projection *budget.BudgetProjection
+	if !q.Key.HideCost() {
+		cost, err = s.finance.FrozenCost(ctx, p)
+		if err != nil {
+			return nil, err
 		}
-		if geom.RadiusM() != nil {
-			r := *geom.RadiusM()
-			radiusM = &r
+		var snapshot struct {
+			Budget json.RawMessage `json:"budget"`
 		}
-		if geom.MinRadiusM() != nil {
-			r := *geom.MinRadiusM()
-			minRadiusM = &r
+		if err = json.Unmarshal([]byte(p.Snapshot()), &snapshot); err != nil {
+			return nil, domain.ErrInvalidSnapshot
 		}
-		if geom.MaxRadiusM() != nil {
-			r := *geom.MaxRadiusM()
-			maxRadiusM = &r
+		config, err := budgetDocument.ReadBudget(p.ProjectID(), string(snapshot.Budget))
+		if err != nil {
+			return nil, err
 		}
-
-		rl := reportDomain.NewReportLayer(
-			l.ID(),
-			l.Name(),
-			l.Code(),
-			l.Description(),
-			string(l.GeometryType()),
-			centerLat, centerLng,
-			radiusM, minRadiusM, maxRadiusM,
-			l.Color(),
-			l.Opacity(),
-		)
-		result = append(result, rl)
+		projection = budget.NewBudgetProjection(config, cost)
 	}
-
-	return result
-}
-
-// buildReportBaseObject преобразует baseObject проекта в ReportBaseObject.
-func buildReportBaseObject(project *defenseDomain.DefenseProject) reportDomain.ReportBaseObject {
-	bo := project.BaseObject()
-	return reportDomain.NewReportBaseObject(
-		bo.ID(),
-		bo.Name(),
-		bo.Center().Lat(),
-		bo.Center().Lng(),
-	)
-}
-
-// buildObjectLines строит строки размещённых объектов из placedObjects + assetLibrary.
-func (s *ReportService) buildObjectLines(ctx context.Context, userID string, project *defenseDomain.DefenseProject, calc *budgetDomain.CostCalculation) ([]reportDomain.ReportPlacedObject, error) {
-	placedObjects := project.PlacedObjects()
-	projectAssets := project.AssetLibrary()
-	layers := project.Layers()
-
-	// Индекс ассетов проекта по ID
-	projectAssetMap := make(map[string]defenseDomain.DefenseAsset, len(projectAssets))
-	for _, a := range projectAssets {
-		projectAssetMap[a.ID()] = a
+	draft, err := domain.NewReportDraft(uuid.NewString(), time.Now().UTC(), q.Key, p, cost, projection)
+	if err != nil {
+		return nil, err
 	}
-
-	// Индекс слоёв по ID
-	layerMap := make(map[string]defenseDomain.EditableDefenseLayer, len(layers))
-	for _, l := range layers {
-		layerMap[l.ID()] = l
+	payload, err := s.render(draft)
+	if err != nil {
+		return nil, err
 	}
-
-	// Индекс расчёта по objectID
-	calcMap := make(map[string]budgetDomain.EstimateLine)
-	for _, line := range calc.ByObject() {
-		calcMap[line.ObjectID()] = line
-	}
-
-	// Кэш полных ассетов (defense_asset domain)
-	fullAssetCache := make(map[string]*defenseAssetDomain.DefenseAsset)
-
-	result := make([]reportDomain.ReportPlacedObject, 0, len(placedObjects))
-
-	for _, obj := range placedObjects {
-		projAsset, hasProjAsset := projectAssetMap[obj.AssetID()]
-		calcLine, hasCalc := calcMap[obj.ID()]
-
-		var unitPriceMln, lineTotalMln float64
-		if hasCalc {
-			unitPriceMln = calcLine.UnitPriceMln()
-			lineTotalMln = calcLine.LineTotalMln()
-		}
-
-		isCompoundPost := false
-		var compSummary *reportDomain.CompositionSummary
-		var weaponSummary *reportDomain.WeaponSummary
-		var azimuthSummary *reportDomain.AzimuthSectorSummary
-
-		if hasProjAsset {
-			cp := projAsset.CompoundProfile()
-			if cp != nil {
-				isCompoundPost = true
-				cs := buildCompositionSummary(cp)
-				compSummary = &cs
-				azSummary := buildAzimuthSectorSummary(cp, string(projAsset.CoverageType()))
-				azimuthSummary = &azSummary
-			}
-
-			// Загружаем полный ассет для weaponSpec
-			fullAsset, ok := fullAssetCache[obj.AssetID()]
-			if !ok {
-				fa, err := s.assets.GetByID(ctx, userID, obj.AssetID())
-				if err != nil && !errors.Is(err, auth.ErrNotFound) {
-					return nil, err
-				}
-				if err == nil {
-					fullAsset = fa
-					fullAssetCache[obj.AssetID()] = fa
-				}
-			}
-			if fullAsset != nil {
-				ws := buildWeaponSummary(fullAsset.WeaponSpec())
-				if ws != nil {
-					weaponSummary = ws
-				}
-			}
-		}
-
-		// Определяем layer code и name
-		layerCode := obj.LayerID()
-		layerName := obj.LayerID()
-		if layer, ok := layerMap[obj.LayerID()]; ok {
-			layerCode = layer.Code()
-			layerName = layer.Name()
-		}
-
-		assetName := obj.AssetID()
-		if hasProjAsset {
-			assetName = projAsset.Name()
-		}
-
-		rpo := reportDomain.NewReportPlacedObject(
-			obj.ID(),
-			obj.AssetID(),
-			assetName,
-			obj.LayerID(),
-			layerCode,
-			layerName,
-			obj.Coordinates().Lat(),
-			obj.Coordinates().Lng(),
-			obj.Quantity(),
-			projAsset.ProtectionType(),
-			unitPriceMln,
-			lineTotalMln,
-			isCompoundPost,
-			compSummary,
-			weaponSummary,
-			azimuthSummary,
-		)
-		result = append(result, rpo)
-	}
-
-	return result, nil
-}
-
-// buildCompositionSummary строит сводку по составной установке.
-func buildCompositionSummary(cp *defenseAssetDomain.DefenseAssetCompoundProfile) reportDomain.CompositionSummary {
-	return reportDomain.NewCompositionSummary(
-		cp.PostType,
-		cp.PersonnelCount,
-		cp.Accountability,
-		cp.Armament,
-		cp.WeaponUnits,
-		cp.SectorOrRange,
-		cp.Azimuth,
-	)
-}
-
-// buildWeaponSummary строит сводку по оружию.
-func buildWeaponSummary(ws *defenseAssetDomain.WeaponSpecification) *reportDomain.WeaponSummary {
-	if ws == nil {
-		return nil
-	}
-
-	caliber := emptyStr(ws.Caliber)
-	ammoType := emptyStr(ws.AmmunitionType)
-	opMode := emptyStr(ws.OperationMode)
-	modCount := ""
-	if ws.ModuleCount != nil {
-		modCount = fmt.Sprintf("%d", *ws.ModuleCount)
-	}
-	isManual := ""
-	if ws.IsManual != nil {
-		if *ws.IsManual {
-			isManual = "ручное"
-		} else {
-			isManual = "автоматическое"
-		}
-	}
-
-	wsSummary := reportDomain.NewWeaponSummary(caliber, ammoType, opMode, modCount, isManual)
-	return &wsSummary
-}
-
-// buildAzimuthSectorSummary строит сводку по азимутальному сектору.
-func buildAzimuthSectorSummary(cp *defenseAssetDomain.DefenseAssetCompoundProfile, coverageType string) reportDomain.AzimuthSectorSummary {
-	return reportDomain.NewAzimuthSectorSummary(cp.Azimuth, coverageType, nil)
-}
-
-// zeroCostFields обнуляет все cost-поля в CostCalculation.
-func zeroCostFields(calc *budgetDomain.CostCalculation) {
-	newCalc := budgetDomain.NewCostCalculation(0, nil, nil, nil)
-	*calc = newCalc
-}
-
-// zeroProfileCost обнуляет TotalMln в StructuralProfile.
-func zeroProfileCost(profile budgetDomain.StructuralProfile) budgetDomain.StructuralProfile {
-	return budgetDomain.NewStructuralProfile(
-		profile.ObjectCount(),
-		profile.UnitCount(),
-		profile.EchelonCount(),
-		profile.CategoryCount(),
-		profile.ConflictCount(),
-		profile.CoveredObjCount(),
-		0,
-		profile.ByEchelon(),
-	)
-}
-
-// zeroObjectCostFields обнуляет cost-поля у всех ReportPlacedObject.
-func zeroObjectCostFields(objects []reportDomain.ReportPlacedObject) []reportDomain.ReportPlacedObject {
-	result := make([]reportDomain.ReportPlacedObject, len(objects))
-	for i, o := range objects {
-		result[i] = reportDomain.NewReportPlacedObject(
-			o.ID(), o.AssetID(), o.AssetName(),
-			o.LayerID(), o.LayerCode(), o.LayerName(),
-			o.Lat(), o.Lng(),
-			o.Quantity(), o.ProtectionType(),
-			0, 0,
-			o.IsCompoundPost(),
-			o.CompositionSummary(),
-			o.WeaponSummary(),
-			o.AzimuthSectorSummary(),
-		)
-	}
-	return result
-}
-
-// emptyStr возвращает пустую строку, если указатель nil, иначе разыменованное значение.
-func emptyStr(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
+	return s.repository.Issue(ctx, actor, domain.NewIssuedReport(draft.ID(), q.Key, p.EnterpriseID(), draft.GeneratedAt(), payload))
 }

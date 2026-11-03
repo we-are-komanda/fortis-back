@@ -50,3 +50,9 @@ func budgetProjectionToDTO(p *domain.BudgetProjection) BudgetProjectionDTO {
 	i := p.Identity()
 	return BudgetProjectionDTO{Identity: CalculationIdentityDTO{ProjectID: i.ProjectID(), ProjectVersion: i.ProjectVersion(), CalculationVersion: i.CalculationVersion(), InputDataVersions: i.InputDataVersions(), SnapshotDigest: i.SnapshotDigest()}, Config: BudgetSettingsDTO{BudgetMode: string(p.Config().BudgetMode()), BudgetLimitMinor: p.Config().BudgetLimitMinor()}, SpentMinor: p.SpentMinor(), RemainingMinor: p.RemainingMinor(), Status: p.Status()}
 }
+
+// CostProjectionToDTO and BudgetProjectionToDTO share the canonical financial wire format with issued reports.
+func CostProjectionToDTO(p *domain.CostProjection) CostProjectionDTO { return costProjectionToDTO(p) }
+func BudgetProjectionToDTO(p *domain.BudgetProjection) BudgetProjectionDTO {
+	return budgetProjectionToDTO(p)
+}

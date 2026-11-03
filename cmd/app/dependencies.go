@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/fortis/backend/internal/config"
 	"github.com/fortis/backend/internal/db"
-	"github.com/fortis/backend/internal/middleware"
 	budgetApp "github.com/fortis/backend/internal/modules/budget/application"
 	budgetDomain "github.com/fortis/backend/internal/modules/budget/domain"
 	budgetInfra "github.com/fortis/backend/internal/modules/budget/infrastructure"
@@ -27,20 +26,13 @@ import (
 	"github.com/fortis/backend/internal/modules/platform/infrastructure"
 	platformUi "github.com/fortis/backend/internal/modules/platform/ui"
 	reportApp "github.com/fortis/backend/internal/modules/report/application"
+	reportDomain "github.com/fortis/backend/internal/modules/report/domain"
+	reportInfra "github.com/fortis/backend/internal/modules/report/infrastructure"
 	reportUi "github.com/fortis/backend/internal/modules/report/ui"
-	userApp "github.com/fortis/backend/internal/modules/user/application"
-	userDomain "github.com/fortis/backend/internal/modules/user/domain"
-	userInfra "github.com/fortis/backend/internal/modules/user/infrastructure"
-	userUi "github.com/fortis/backend/internal/modules/user/ui"
 	"github.com/fortis/backend/internal/probe"
 	"github.com/fortis/backend/internal/rdbms"
 	"go.uber.org/dig"
 )
-
-var publicAuthPaths = []string{
-	"^/_/[a-z]+$", "^/api/v1/auth/register$", "^/api/v1/auth/login$",
-	"^/api/v1/token_validate$", "^/api/v1/demo-requests$",
-}
 
 //go:cover off
 func (app *Application) provideDependencies() {
@@ -144,20 +136,16 @@ func (app *Application) provideDependencies() {
 	processError(err)
 
 	// Report module
+	err = app.container.Provide(reportInfra.NewReportRepository, dig.As(new(reportDomain.ReportRepository)))
+	processError(err)
+	err = app.container.Provide(func() reportApp.PayloadRenderer { return reportUi.RenderReport })
+	processError(err)
+	err = app.container.Provide(func(service *defenseApp.DefenseProjectService) reportApp.ProjectService { return service })
+	processError(err)
 	err = app.container.Provide(reportUi.NewReportController)
 	processError(err)
 	err = app.container.Provide(reportApp.NewReportService,
 		dig.As(new(reportUi.ReportServiceInterface)))
-	processError(err)
-
-	// User module
-	err = app.container.Provide(userUi.NewUserController)
-	processError(err)
-	err = app.container.Provide(userInfra.NewUserRepository)
-	processError(err)
-	err = app.container.Provide(func(repo userDomain.UserRepositoryInterface, authCfg config.Auth) *userApp.UserService {
-		return userApp.NewUserService(repo, authCfg.JWTSecret, authCfg.JWTExpiry)
-	}, dig.As(new(userUi.UserServiceInterface)))
 	processError(err)
 
 	// Demo requests: durable intake and outbox share the existing database.
@@ -174,9 +162,4 @@ func (app *Application) provideDependencies() {
 	})
 	processError(err)
 
-	// Auth middleware
-	err = app.container.Provide(func(cfg config.Auth, users userUi.UserServiceInterface) *middleware.AuthRequired {
-		return middleware.NewAuthRequired(cfg.JWTSecret, publicAuthPaths, users)
-	})
-	processError(err)
 }

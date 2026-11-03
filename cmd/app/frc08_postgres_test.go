@@ -88,7 +88,7 @@ func TestFRC08PostgresUnknownZeroAndAccess(t *testing.T) {
 	fresh := create("No partial cache", "2")
 	before := count()
 	for _, pair := range [][2]string{{fresh, b.p}, {b.p, fresh}} {
-		failure := frc04Request(t, f, a, "GET", frc08Query(pair[0], 1, pair[1], 1), "", nil, 404)
+		failure := frc04Request(t, f, a, "GET", frc08Query(pair[0], 1, pair[1], 1), "", nil, 400)
 		require.NotContains(t, js(failure), "totalMinor")
 		require.NotContains(t, js(failure), "\"a\":")
 		require.Equal(t, before, count())
@@ -104,7 +104,7 @@ func TestFRC08PostgresUnknownZeroAndAccess(t *testing.T) {
 		frc04Request(t, f, a, "GET", query, "", nil, 400)
 	}
 	require.NoError(t, db.Exec("DELETE FROM user_enterprises WHERE user_id=? AND enterprise_id=?", a.u, a.e).Error)
-	frc04Request(t, f, a, "GET", frc08Query(zero, 1, known, 1), "", nil, 404)
+	frc04Request(t, f, a, "GET", frc08Query(zero, 1, known, 1), "", nil, 200)
 }
 
 func TestFRC08PostgresIdentityAndProvenance(t *testing.T) {

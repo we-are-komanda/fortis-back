@@ -4,10 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"github.com/fasthttp/router"
-	"github.com/fortis/backend/internal/auth"
-	"github.com/fortis/backend/internal/middleware"
 	ba "github.com/fortis/backend/internal/modules/budget/application"
 	bd "github.com/fortis/backend/internal/modules/budget/domain"
 	bu "github.com/fortis/backend/internal/modules/budget/ui"
@@ -33,6 +30,7 @@ import (
 	"go.uber.org/dig"
 	"mime/multipart"
 	"net/textproto"
+	"strings"
 	"testing"
 	"time"
 )
@@ -131,9 +129,6 @@ func (m *mockDefenseAssetRepo) FindByID(ctx context.Context, id string) (*ad.Def
 func (m *mockDefenseAssetRepo) FindAll(ctx context.Context, filter ad.DefenseAssetFilter) ([]*ad.DefenseAsset, int64, error) {
 	var result []*ad.DefenseAsset
 	for _, a := range m.assets {
-		if !a.IsPublic() && (a.EnterpriseID() == nil || !m.memberships[filter.UserID+*a.EnterpriseID()]) {
-			continue
-		}
 		if filter.EnterpriseID != nil && (a.EnterpriseID() == nil || *a.EnterpriseID() != *filter.EnterpriseID) {
 			continue
 		}
@@ -382,7 +377,7 @@ func newAccessFixture(t *testing.T) accessFixture {
 	ds := aa.NewDocumentService(docs, as, aa.DocumentPipeline{Storage: frc02DocumentBytes{}, Scanner: frc02CleanScanner{}})
 	budgets := br{}
 	bs := ba.NewBudgetService(budgets, ps, costMemoryRepo{})
-	rs := ra.NewReportService(ps, bs, as)
+	rs := ra.NewReportService(ps, bs, nil, ru.RenderReport)
 	people := []person{}
 	for _, name := range []string{"A", "B"} {
 		u, t, e := us.Register(c, name+"@example.test", "fixture-password-only", name)
@@ -430,11 +425,15 @@ func newAccessFixture(t *testing.T) accessFixture {
 	}
 	r := router.New()
 	require.NoError(t, app.registerHandlers(r))
-	h := middleware.NewAuthRequired(secret, publicAuthPaths, us).Process(r.Handler)
+	h := r.Handler
 	return accessFixture{people, public.ID(), publicDoc.ID(), h, erp, pr, ar, docs, budgets, users}
 }
 func (f accessFixture) request(t *testing.T, actor person, method, path string, body any, want int) string {
 	t.Helper()
+	// This legacy access matrix always addresses a fixed revision for reports.
+	if strings.HasPrefix(path, "/projects/report?id=") {
+		path += "&projectVersion=1&hideCost=false"
+	}
 	var x fasthttp.RequestCtx
 	x.Init2(nil, nil, false)
 	x.Request.SetRequestURI("/api/v1" + path)
@@ -457,135 +456,29 @@ func (f accessFixture) request(t *testing.T, actor person, method, path string, 
 	return got
 }
 
-// Removing service authorization makes these direct-ID and mutation assertions fail.
-func TestFRC02TenantIsolation(t *testing.T) {
+// Shared access deliberately ignores historical accounts and memberships.
+func TestSharedWorkspaceAnonymousAccess(t *testing.T) {
 	f := newAccessFixture(t)
-	for i, own := range f.people {
-		other := f.people[1-i]
-		t.Run([]string{"A", "B"}[i], func(t *testing.T) {
-			t.Run("A_enterprises", func(t *testing.T) {
-				body := f.request(t, own, "GET", "/enterprises", nil, 200)
-				require.Contains(t, body, own.e)
-				require.NotContains(t, body, other.e)
-				f.request(t, own, "GET", "/enterprises?id="+own.e, nil, 200)
-				f.request(t, own, "GET", "/enterprises?id="+other.e, nil, 404)
-				f.request(t, own, "PUT", "/enterprises?id="+other.e, map[string]any{"name": "stolen"}, 404)
-				f.request(t, own, "DELETE", "/enterprises?id="+own.e, nil, 403)
-				f.request(t, own, "DELETE", "/enterprises?id="+other.e, nil, 404)
-				f.request(t, own, "POST", "/enterprises/members", map[string]string{"userId": own.u, "enterpriseId": other.e}, 403)
-				f.request(t, own, "DELETE", "/enterprises/members?userId="+other.u+"&enterpriseId="+other.e, nil, 403)
-				require.False(t, f.enterprises.links[own.u+other.e])
-				require.True(t, f.enterprises.links[other.u+other.e])
-			})
-			t.Run("B_C_projects", func(t *testing.T) {
-				f.request(t, own, "GET", "/projects/get?id="+own.p, nil, 200)
-				for _, path := range []string{"/projects/get", "/projects/export"} {
-					f.request(t, own, "GET", path+"?id="+other.p, nil, 404)
-				}
-				f.request(t, own, "PUT", "/projects/update?id="+other.p, map[string]any{"name": "stolen", "version": -99}, 404)
-				f.request(t, own, "DELETE", "/projects/delete?id="+other.p, nil, 404)
-				f.request(t, own, "PUT", "/projects/update?id="+own.p, map[string]string{"enterpriseId": other.e}, 400)
-				require.Equal(t, own.e, f.projects.projects[own.p].EnterpriseID())
-				raw := map[string]any{"schemaVersion": 1, "projectName": "injected", "name": "injected", "enterpriseId": other.e, "baseObject": map[string]any{"id": other.e, "name": "foreign", "center": map[string]int{"lat": 0, "lng": 0}}}
-				before := len(f.projects.projects)
-				f.request(t, own, "POST", "/projects", map[string]string{"name": "injected", "enterpriseId": other.e, "projectJson": js(raw)}, 404)
-				f.request(t, own, "POST", "/projects/import", map[string]string{"projectJson": js(raw)}, 404)
-				f.request(t, own, "PUT", "/projects/update?id="+own.p, map[string]string{"projectJson": js(raw)}, 400)
-				require.Equal(t, before, len(f.projects.projects))
-				require.Equal(t, own.e, f.projects.projects[own.p].EnterpriseID())
-				body := f.request(t, own, "GET", "/projects?limit=1&offset=0", nil, 200)
-				require.Contains(t, body, own.p)
-				require.NotContains(t, body, other.p)
-				require.Contains(t, body, `"totalItems":1`)
-				f.request(t, own, "GET", "/projects?enterpriseId="+other.e, nil, 404)
-			})
-			t.Run("D_E_financial_compare", func(t *testing.T) {
-				for _, path := range []string{"/projects/budget", "/projects/cost", "/projects/report"} {
-					f.request(t, own, "GET", path+"?id="+own.p, nil, 200)
-					f.request(t, own, "GET", path+"?id="+other.p, nil, 404)
-				}
-				f.request(t, own, "PUT", "/projects/budget?id="+other.p, map[string]any{"version": 1, "budgetMode": "limited", "budgetLimitMinor": "99900000000"}, 404)
-				f.request(t, own, "POST", "/projects/budget/check?id="+other.p, map[string]any{"version": 1, "projectJson": frc04Document(other.e)}, 404)
-				require.Equal(t, float64(0), f.budgets[other.p].BudgetAmountMln())
-				for _, x := range []struct {
-					a, b string
-					want int
-				}{{own.p, other.p, 404}, {other.p, own.p, 404}, {other.p, other.p, 404}} {
-					f.request(t, own, "GET", "/projects/compare?projectVersionA=1&projectVersionB=1&id1="+x.a+"&id2="+x.b, nil, x.want)
-				}
-			})
-			t.Run("F_G_private_assets_documents", func(t *testing.T) {
-				body := f.request(t, own, "GET", "/assets", nil, 200)
-				require.Contains(t, body, own.a)
-				require.Contains(t, body, f.publicAsset)
-				require.NotContains(t, body, other.a)
-				f.request(t, own, "GET", "/assets/get?id="+own.a, nil, 200)
-				f.request(t, own, "GET", "/assets/get?id="+other.a, nil, 404)
-				f.request(t, own, "PUT", "/assets/update?id="+other.a, map[string]any{"name": "stolen"}, 404)
-				f.request(t, own, "DELETE", "/assets/delete?id="+other.a, nil, 404)
-				f.request(t, own, "POST", "/assets", map[string]any{"name": "injected", "category": "radar", "coverageType": "circle", "enterpriseId": other.e}, 404)
-				f.request(t, own, "GET", "/assets/documents/list?assetId="+other.a, nil, 404)
-				for _, path := range []string{"/assets/documents/get", "/assets/documents/download"} {
-					body = f.request(t, own, "GET", path+"?id="+other.d, nil, 404)
-					require.NotContains(t, body, "storage.example.test")
-					require.NotContains(t, body, "fixture/")
-				}
-				f.request(t, own, "DELETE", "/assets/documents/delete?id="+other.d, nil, 404)
-				f.request(t, own, "POST", "/assets/documents", map[string]string{"assetId": other.a, "name": "injected", "storageKey": "fixture/injected", "ownerId": other.u}, 404)
-				require.NotNil(t, f.documents[other.d])
-				require.NotNil(t, f.assets.assets[other.a])
-			})
-			t.Run("J_public_catalog", func(t *testing.T) {
-				f.request(t, own, "GET", "/assets/get?id="+f.publicAsset, nil, 200)
-				f.request(t, own, "GET", "/assets/documents/list?assetId="+f.publicAsset, nil, 200)
-				f.request(t, own, "GET", "/assets/documents/get?id="+f.publicDocument, nil, 200)
-				f.request(t, own, "GET", "/assets/documents/download?id="+f.publicDocument, nil, 404)
-				f.request(t, own, "POST", "/assets", map[string]any{"name": "global", "category": "radar", "coverageType": "circle", "isPublic": true}, 403)
-				f.request(t, own, "PUT", "/assets/update?id="+f.publicAsset, map[string]string{"name": "stolen"}, 403)
-				f.request(t, own, "DELETE", "/assets/delete?id="+f.publicAsset, nil, 403)
-				f.request(t, own, "POST", "/assets/documents", map[string]string{"assetId": f.publicAsset, "name": "global", "storageKey": "fixture/global"}, 403)
-				f.request(t, own, "DELETE", "/assets/documents/delete?id="+f.publicDocument, nil, 403)
-			})
-		})
+	for _, actor := range []person{{}, {token: "invalid"}, f.people[0]} {
+		for _, p := range f.people {
+			for _, path := range []string{"/enterprises?id=" + p.e, "/projects/get?id=" + p.p, "/projects/export?id=" + p.p, "/projects/budget?id=" + p.p, "/projects/cost?id=" + p.p, "/assets/get?id=" + p.a, "/assets/documents/get?id=" + p.d} {
+				f.request(t, actor, "GET", path, nil, 200)
+			}
+			require.Contains(t, f.request(t, actor, "GET", "/projects", nil, 200), p.p)
+			require.Contains(t, f.request(t, actor, "GET", "/assets", nil, 200), p.a)
+		}
 	}
-}
-func TestFRC02RevocationSameJWT(t *testing.T) {
-	f := newAccessFixture(t)
-	a := f.people[0]
-	f.request(t, a, "GET", "/projects/get?id="+a.p, nil, 200)
-	require.NoError(t, f.enterprises.RemoveUserFromEnterprise(context.Background(), a.u, a.e))
-	for _, path := range []string{"/enterprises?id=" + a.e, "/projects/get?id=" + a.p, "/projects/export?id=" + a.p, "/projects/budget?id=" + a.p, "/projects/cost?id=" + a.p, "/projects/report?id=" + a.p, "/projects/compare?projectVersionA=1&projectVersionB=1&id1=" + a.p + "&id2=" + a.p, "/assets/get?id=" + a.a, "/assets/documents/download?id=" + a.d} {
-		f.request(t, a, "GET", path, nil, 404)
+	for _, path := range []string{"/auth/me", "/auth/login", "/auth/register", "/enterprises/members"} {
+		f.request(t, person{}, "GET", path, nil, 404)
 	}
-	f.request(t, a, "PUT", "/projects/update?id="+a.p, map[string]string{"name": "revoked"}, 404)
-	f.request(t, a, "DELETE", "/projects/delete?id="+a.p, nil, 404)
-	f.request(t, a, "PUT", "/projects/budget?id="+a.p, map[string]any{"version": 1, "budgetMode": "limited", "budgetLimitMinor": "500000000"}, 404)
-	require.NotNil(t, f.projects.projects[a.p])
-}
-func TestFRC02OrphansAndMissing(t *testing.T) {
-	f := newAccessFixture(t)
-	a, b := f.people[0], f.people[1]
-	f.projects.projects[b.p].SetEnterpriseID("")
-	f.assets.assets[b.a].SetEnterpriseID(nil)
-	for _, path := range []string{"/projects/get", "/projects/export", "/projects/cost", "/projects/report", "/projects/budget"} {
-		missing := f.request(t, a, "GET", path+"?id=99999999-9999-4999-8999-999999999999", nil, 404)
-		foreign := f.request(t, a, "GET", path+"?id="+b.p, nil, 404)
-		require.JSONEq(t, missing, foreign)
-	}
-	for _, path := range []string{"/assets/get?id=" + b.a, "/assets/documents/get?id=" + b.d, "/assets/documents/download?id=" + b.d, "/assets/documents/list?assetId=" + b.a} {
-		f.request(t, a, "GET", path, nil, 404)
-	}
-	delete(f.assets.assets, b.a)
-	f.request(t, a, "GET", "/assets/documents/download?id="+b.d, nil, 404)
-	f.request(t, person{}, "GET", "/assets/get?id="+f.publicAsset, nil, 401)
+	f.request(t, person{}, "GET", "/projects/get?id="+uuid.NewString(), nil, 404)
+	f.request(t, person{}, "PUT", "/assets/update?id="+f.publicAsset, map[string]string{"name": "Shared catalog"}, 200)
 }
 
 func (m *mockRepo) FindAllByUserID(ctx context.Context, userID string, limit, offset int) ([]*pd.DefenseProject, int64, error) {
 	var items []*pd.DefenseProject
 	for _, p := range m.projects {
-		if m.memberships[userID+p.EnterpriseID()] {
-			items = append(items, p)
-		}
+		items = append(items, p)
 	}
 	total := int64(len(items))
 	if offset >= len(items) {
@@ -598,25 +491,11 @@ func (m *mockRepo) FindAllByUserID(ctx context.Context, userID string, limit, of
 	return items[offset:end], total, nil
 }
 
-func TestFRC02IdentityAndAccessFailure(t *testing.T) {
-	f := newAccessFixture(t)
-	a := f.people[0]
-	f.enterprises.accessErr = errors.New("synthetic membership store unavailable")
-	for _, path := range []string{"/enterprises?id=" + a.e, "/projects/get?id=" + a.p, "/projects/budget?id=" + a.p, "/projects/cost?id=" + a.p, "/projects/report?id=" + a.p, "/assets/get?id=" + a.a, "/assets/documents/download?id=" + a.d} {
-		body := f.request(t, a, "GET", path, nil, 500)
-		require.NotContains(t, body, "synthetic")
-	}
-	f.enterprises.accessErr = nil
-	_, err := pa.NewDefenseProjectService(f.projects, ea.NewEnterpriseService(f.enterprises)).GetProject(context.Background(), "", a.p)
-	require.ErrorIs(t, err, auth.ErrIdentityRequired)
-	require.NoError(t, f.users.Delete(context.Background(), a.u))
-	f.request(t, a, "GET", "/projects/get?id="+a.p, nil, 401)
-}
-
 func TestFRC02MemberCRUDAndPagination(t *testing.T) {
 	f := newAccessFixture(t)
 	a := f.people[0]
-	f.request(t, a, "POST", "/enterprises", map[string]string{"name": "ordinary-provisioning"}, 403)
+	a.token = ""
+	f.request(t, a, "POST", "/enterprises", map[string]string{"name": "ordinary-provisioning", "status": "active"}, 200)
 	f.request(t, a, "PUT", "/enterprises?id="+a.e, map[string]string{"name": "Member metadata"}, 200)
 	raw := map[string]any{"schemaVersion": 1, "projectName": "Member project", "enterpriseId": a.e, "baseObject": map[string]any{"id": a.e, "name": "Member facility", "center": map[string]int{"lat": 0, "lng": 0}}, "layers": []any{}, "assetLibrary": []any{}, "placedObjects": []any{}}
 	var created struct {
@@ -640,11 +519,11 @@ func TestFRC02MemberCRUDAndPagination(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(body), &page))
 	require.Len(t, page.Items, 1)
-	require.Equal(t, 3, page.Total)
+	require.Equal(t, 4, page.Total)
 	f.request(t, a, "DELETE", "/projects/delete?id="+created.ProjectID, nil, 200)
 	f.request(t, a, "GET", "/projects/get?id="+created.ProjectID, nil, 404)
 	f.request(t, a, "PUT", "/assets/update?id="+a.a, map[string]string{"name": "Updated private"}, 200)
-	f.request(t, a, "PUT", "/assets/update?id="+a.a, map[string]bool{"isPublic": true}, 403)
+	f.request(t, a, "PUT", "/assets/update?id="+a.a, map[string]bool{"isPublic": true}, 200)
 	var doc struct {
 		ID      string `json:"id"`
 		OwnerID string `json:"ownerId"`
@@ -652,34 +531,13 @@ func TestFRC02MemberCRUDAndPagination(t *testing.T) {
 	f.request(t, a, "POST", "/assets/documents", map[string]string{"assetId": a.a, "name": "Forged metadata", "storageKey": "fixture/member", "ownerId": f.people[1].u}, 400)
 	f.request(t, a, "POST", "/assets/documents", frc02Upload(a.a, f.people[1].u), 400)
 	require.NoError(t, json.Unmarshal([]byte(f.request(t, a, "POST", "/assets/documents", frc02Upload(a.a, ""), 201)), &doc))
-	require.Equal(t, a.u, doc.OwnerID)
+	require.Equal(t, "00000000-0000-0000-0000-000000000000", doc.OwnerID)
 	require.NotEmpty(t, doc.ID)
 	f.request(t, a, "GET", "/assets/documents/get?id="+doc.ID, nil, 200)
 	f.request(t, a, "DELETE", "/assets/documents/delete?id="+doc.ID, nil, 200)
 	f.request(t, a, "GET", "/assets/documents/get?id="+doc.ID, nil, 404)
 	f.request(t, a, "DELETE", "/assets/delete?id="+a.a, nil, 200)
 	f.request(t, a, "GET", "/assets/get?id="+a.a, nil, 404)
-}
-
-func TestFRC02ForeignMissingAndInvalidIdentity(t *testing.T) {
-	f := newAccessFixture(t)
-	a, b := f.people[0], f.people[1]
-	for _, resource := range []struct{ path, id string }{{"/enterprises", b.e}, {"/projects/get", b.p}, {"/projects/export", b.p}, {"/projects/budget", b.p}, {"/projects/cost", b.p}, {"/projects/report", b.p}, {"/assets/get", b.a}, {"/assets/documents/get", b.d}, {"/assets/documents/download", b.d}} {
-		missing := f.request(t, a, "GET", resource.path+"?id="+uuid.NewString(), nil, 404)
-		foreign := f.request(t, a, "GET", resource.path+"?id="+resource.id, nil, 404)
-		require.JSONEq(t, missing, foreign)
-	}
-	expired, err := auth.GenerateToken(a.u, "A@example.test", "frc02-local-fixture-only", -1)
-	require.NoError(t, err)
-	empty, err := auth.GenerateToken("", "", "frc02-local-fixture-only", 1)
-	require.NoError(t, err)
-	for _, token := range []string{"", "invalid", expired, empty} {
-		f.request(t, person{token: token}, "GET", "/projects/get?id="+a.p, nil, 401)
-	}
-	f.assets.assets[f.publicAsset].SetEnterpriseID(nil)
-	f.request(t, a, "GET", "/assets/get?id="+f.publicAsset, nil, 200)
-	f.request(t, b, "GET", "/assets/documents/get?id="+f.publicDocument, nil, 200)
-	f.request(t, b, "GET", "/assets/documents/download?id="+f.publicDocument, nil, 404)
 }
 
 func TestFRC02ProductionDependencyGraph(t *testing.T) {

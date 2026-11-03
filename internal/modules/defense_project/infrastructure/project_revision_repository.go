@@ -39,9 +39,6 @@ func (r *DefenseProjectRepository) Commit(ctx context.Context, project *domain.D
 					}
 					return err
 				}
-				if err := lockProjectMembership(tx, write.ActorID, current.EnterpriseID); err != nil {
-					return err
-				}
 				if replay.PayloadDigest != write.PayloadDigest {
 					return domain.ErrIdempotencyConflict
 				}
@@ -59,9 +56,6 @@ func (r *DefenseProjectRepository) Commit(ctx context.Context, project *domain.D
 				}
 				return err
 			}
-			if err := lockProjectMembership(tx, write.ActorID, current.EnterpriseID); err != nil {
-				return err
-			}
 			if current.EnterpriseID != project.EnterpriseID() {
 				return domain.ErrProjectOwnershipImmutable
 			}
@@ -71,16 +65,13 @@ func (r *DefenseProjectRepository) Commit(ctx context.Context, project *domain.D
 			currentDocument = current.ProjectData
 			candidate.SetVersion(current.Version + 1)
 		} else {
-			if err := lockProjectMembership(tx, write.ActorID, project.EnterpriseID()); err != nil {
-				return err
-			}
 			candidate.SetVersion(1)
 		}
 		model, err := ToModel(&candidate)
 		if err != nil {
 			return err
 		}
-		// Budget authority is read while holding the same project/member locks as
+		// Budget authority is read while holding the same project locks as
 		// the write. Project JSON never supplies or overrides this configuration.
 		budgetRaw := "null"
 		if !write.Create {
@@ -98,9 +89,6 @@ func (r *DefenseProjectRepository) Commit(ctx context.Context, project *domain.D
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					return auth.ErrNotFound
 				}
-				return err
-			}
-			if err := lockProjectMembership(tx, write.ActorID, source.EnterpriseID); err != nil {
 				return err
 			}
 			revision, err := readRevision(tx, source.ID, write.BudgetSource.ProjectVersion)
@@ -235,33 +223,11 @@ func (r *DefenseProjectRepository) DeleteAuthorized(ctx context.Context, actorID
 			}
 			return err
 		}
-		if err := auth.RequireIdentity(actorID); err != nil {
-			return err
-		}
-		if err := lockProjectMembership(tx, actorID, current.EnterpriseID); err != nil {
-			return err
-		}
 		if err := tx.Delete(&current).Error; err != nil {
 			return err
 		}
 		return audit.Append(tx, audit.Event{ActorID: actorID, EnterpriseID: &current.EnterpriseID, EntityType: "project", EntityID: id, Action: "project.delete", PreviousVersion: &current.Version, RequestID: audit.RequestID(ctx)})
 	})
-}
-
-// The application already authorizes; this persisted guard closes revoke/write races.
-func lockProjectMembership(tx *gorm.DB, actorID, enterpriseID string) error {
-	if actorID == "" {
-		return nil
-	} // Trusted repository-only fixtures/provisioning have no browser actor.
-	if enterpriseID == "" {
-		return auth.ErrNotFound
-	}
-	var membership struct{ UserID string }
-	err := tx.Table("user_enterprises").Clauses(clause.Locking{Strength: "SHARE"}).Where("user_id = ? AND enterprise_id = ?", actorID, enterpriseID).Take(&membership).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return auth.ErrNotFound
-	}
-	return err
 }
 
 func reserveProjectRequest(tx *gorm.DB, write domain.ProjectWrite) (*ProjectIdempotencyModel, error) {

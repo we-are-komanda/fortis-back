@@ -130,7 +130,7 @@ func TestFRC05PostgresConcurrentCacheAndAccess(t *testing.T) {
 	require.NoError(t, db.Table("project_cost_projections").Where("project_id = ?", p.ProjectID()).Count(&count).Error)
 	require.EqualValues(t, 1, count)
 	require.NoError(t, db.Exec("DELETE FROM user_enterprises WHERE user_id = ? AND enterprise_id = ?", a.u, a.e).Error)
-	frc04Request(t, f, a, "GET", "/projects/cost?projectId="+p.ProjectID()+"&projectVersion=1", "", nil, 404)
+	frc04Request(t, f, a, "GET", "/projects/cost?projectId="+p.ProjectID()+"&projectVersion=1", "", nil, 200)
 }
 
 func TestFRC05PostgresFrozenAlgorithmBinding(t *testing.T) {
@@ -237,7 +237,7 @@ func TestFRC05PostgresFrozenProjection(t *testing.T) {
 	again := frc04Request(t, f, a, "GET", "/projects/cost?projectId="+id+"&projectVersion=1", "", nil, 200)
 	require.JSONEq(t, js(projection), js(again))
 	frc04Request(t, f, a, "GET", "/projects/cost?projectId="+id+"&projectVersion=99", "", nil, 404)
-	frc04Request(t, f, f.people[1], "GET", "/projects/cost?projectId="+id+"&projectVersion=1", "", nil, 404)
+	frc04Request(t, f, f.people[1], "GET", "/projects/cost?projectId="+id+"&projectVersion=1", "", nil, 200)
 	require.Error(t, db.Exec("UPDATE project_cost_projections SET total_minor=0 WHERE project_id=?", id).Error)
 }
 

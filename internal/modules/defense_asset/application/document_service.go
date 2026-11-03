@@ -48,9 +48,6 @@ func (s *DocumentService) Create(ctx context.Context, userID string, input Creat
 
 // GetByID возвращает документ по ID.
 func (s *DocumentService) GetByID(ctx context.Context, userID, id string) (*domain.Document, error) {
-	if err := auth.RequireIdentity(userID); err != nil {
-		return nil, err
-	}
 	doc, err := s.repo.FindByID(ctx, id)
 	if errors.Is(err, domain.ErrDocumentNotFound) {
 		return nil, auth.ErrNotFound

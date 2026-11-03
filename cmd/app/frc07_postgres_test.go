@@ -149,12 +149,14 @@ func TestFRC07PostgresUnknownZeroAndValidation(t *testing.T) {
 		body         any
 	}{
 		{"GET", "/projects/budget?projectId=" + id + "&projectVersion=2", nil},
-		{"PUT", "/projects/budget?projectId=" + id, map[string]any{"version": 3, "budgetMode": "limited", "budgetLimitMinor": "1"}},
-		{"POST", "/projects/budget/check?projectId=" + id, map[string]any{"version": 3, "projectJson": unknown}},
+		{"PUT", "/projects/budget?projectId=" + id, map[string]any{"version": 2, "budgetMode": "limited", "budgetLimitMinor": "1"}},
+		{"POST", "/projects/budget/check?projectId=" + id, map[string]any{"version": 2, "projectJson": unknown}},
 	} {
-		response := frc04Request(t, f, b, request.method, request.path, "", request.body, 404)
-		require.NotContains(t, js(response), "spentMinor")
-		require.NotContains(t, js(response), "budgetLimitMinor")
+		want := 200
+		if request.method != "GET" {
+			want = 409
+		}
+		frc04Request(t, f, b, request.method, request.path, "", request.body, want)
 	}
 	frc04Request(t, f, a, "PUT", "/projects/budget?projectId="+id, "", map[string]any{"version": 3, "budgetMode": "unlimited", "budgetLimitMinor": nil}, 200)
 	frc04Request(t, f, a, "PUT", "/projects/update?id="+id, "", map[string]any{"version": 4, "projectJson": unknown}, 200)
@@ -198,7 +200,7 @@ func TestFRC07PostgresCloneAuthorityAndReplay(t *testing.T) {
 	imported := frc04Request(t, f, a, "POST", "/projects/import", "", map[string]any{"projectJson": js(forged), "budgetSource": map[string]any{"projectId": b.p, "projectVersion": 1}}, 200)
 	require.Equal(t, "unlimited", imported["snapshot"].(map[string]any)["budget"].(map[string]any)["budgetMode"])
 	payload["budgetSource"] = map[string]any{"projectId": b.p, "projectVersion": 1}
-	frc04Request(t, f, a, "POST", "/projects", "", payload, 404)
+	frc04Request(t, f, a, "POST", "/projects", "", payload, 200)
 	payload["budgetSource"] = map[string]any{"projectId": id, "projectVersion": 999}
 	frc04Request(t, f, a, "POST", "/projects", "", payload, 404)
 	payload["budgetSource"] = map[string]any{"projectId": id, "projectVersion": 0}

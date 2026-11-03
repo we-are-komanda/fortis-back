@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"github.com/fasthttp/router"
-	"github.com/fortis/backend/internal/middleware"
 	bi "github.com/fortis/backend/internal/modules/budget/infrastructure"
 	ai "github.com/fortis/backend/internal/modules/defense_asset/infrastructure"
 	pi "github.com/fortis/backend/internal/modules/defense_project/infrastructure"
@@ -38,6 +37,7 @@ import (
 	pu "github.com/fortis/backend/internal/modules/defense_project/ui"
 
 	ra "github.com/fortis/backend/internal/modules/report/application"
+	ri "github.com/fortis/backend/internal/modules/report/infrastructure"
 	ru "github.com/fortis/backend/internal/modules/report/ui"
 	ua "github.com/fortis/backend/internal/modules/user/application"
 	uu "github.com/fortis/backend/internal/modules/user/ui"
@@ -45,59 +45,24 @@ import (
 
 // Explicit opt-in: runs existing migrations inside a fresh transaction/schema only.
 // FRC02_TEST_DSN must point to a disposable local PostgreSQL database.
-func TestFRC02Postgres(t *testing.T) {
-	tx := frc02TestDatabase(t)
-	f := newPostgresFixture(t, tx)
-	for i, a := range f.people {
-		b := f.people[1-i]
-		t.Run([]string{"A", "B"}[i], func(t *testing.T) {
-			body := f.request(t, a, "GET", "/enterprises?limit=1", nil, 200)
-			require.Contains(t, body, a.e)
-			require.NotContains(t, body, b.e)
-			require.Contains(t, body, `"totalItems":1`)
-			f.request(t, a, "GET", "/enterprises?id="+b.e, nil, 404)
-			f.request(t, a, "POST", "/enterprises/members", map[string]string{"userId": a.u, "enterpriseId": b.e}, 403)
-			body = f.request(t, a, "GET", "/projects?limit=1", nil, 200)
-			require.Contains(t, body, a.p)
-			require.NotContains(t, body, b.p)
-			require.Contains(t, body, `"totalItems":1`)
-			for _, p := range []string{"/projects/get", "/projects/export", "/projects/budget", "/projects/cost", "/projects/report"} {
-				f.request(t, a, "GET", p+"?id="+a.p, nil, 200)
-				f.request(t, a, "GET", p+"?id="+b.p, nil, 404)
-			}
-			f.request(t, a, "PUT", "/projects/update?id="+b.p, map[string]string{"name": "stolen"}, 404)
-			f.request(t, a, "PUT", "/projects/update?id="+a.p, map[string]any{"name": "allowed", "version": 1}, 200)
-			f.request(t, a, "PUT", "/projects/update?id="+a.p, map[string]string{"enterpriseId": b.e}, 400)
-			for _, pair := range [][2]string{{a.p, b.p}, {b.p, a.p}, {b.p, b.p}} {
-				f.request(t, a, "GET", "/projects/compare?projectVersionA=1&projectVersionB=1&id1="+pair[0]+"&id2="+pair[1], nil, 404)
-			}
-			body = f.request(t, a, "GET", "/assets?limit=1", nil, 200)
-			require.NotContains(t, body, b.a)
-			require.Contains(t, body, `"totalItems":2`)
-			f.request(t, a, "GET", "/assets/get?id="+a.a, nil, 200)
-			f.request(t, a, "GET", "/assets/get?id="+b.a, nil, 404)
-			f.request(t, a, "GET", "/assets/documents/get?id="+a.d, nil, 200)
-			f.request(t, a, "GET", "/assets/documents/download?id="+a.d, nil, 404)
-			body = f.request(t, a, "GET", "/assets/documents/download?id="+b.d, nil, 404)
-			require.NotContains(t, body, "storage")
-			f.request(t, a, "GET", "/assets/documents/download?id="+f.publicDocument, nil, 404)
-			f.request(t, a, "DELETE", "/assets/documents/delete?id="+f.publicDocument, nil, 403)
-		})
+func TestSharedWorkspacePostgres(t *testing.T) {
+	db := frc02TestDatabase(t)
+	f := newPostgresFixture(t, db)
+	for _, p := range f.people {
+		for _, path := range []string{"/enterprises?id=" + p.e, "/projects/get?id=" + p.p, "/projects/budget?id=" + p.p, "/assets/get?id=" + p.a, "/assets/documents/get?id=" + p.d} {
+			f.request(t, person{}, "GET", path, nil, 200)
+		}
+		require.Contains(t, f.request(t, person{}, "GET", "/projects", nil, 200), p.p)
+		f.request(t, person{}, "PUT", "/projects/update?id="+p.p, map[string]any{"name": "Anonymous edit", "version": 1}, 200)
+		f.request(t, person{}, "PUT", "/projects/update?id="+p.p, map[string]any{"name": "Stale edit", "version": 1}, 409)
 	}
-	a, b := f.people[0], f.people[1]
-	// Stored ownership is authoritative even if JSON still embeds an enterprise.
-	require.NoError(t, tx.Exec("UPDATE defense_projects SET enterprise_id = NULL WHERE id = ?", b.p).Error)
-	require.NoError(t, tx.Exec("UPDATE defense_assets SET enterprise_id = NULL WHERE id = ?", b.a).Error)
-	f.request(t, b, "GET", "/projects/get?id="+b.p, nil, 404)
-	f.request(t, b, "GET", "/assets/get?id="+b.a, nil, 404)
-	f.request(t, b, "GET", "/assets/documents/download?id="+b.d, nil, 404)
-	require.NoError(t, tx.Exec("UPDATE defense_assets SET enterprise_id = NULL WHERE id = ?", f.publicAsset).Error)
-	f.request(t, a, "GET", "/assets/documents/download?id="+f.publicDocument, nil, 404)
-	require.NoError(t, ei.NewEnterpriseRepository(tx).RemoveUserFromEnterprise(context.Background(), a.u, a.e))
-	for _, path := range []string{"/enterprises?id=" + a.e, "/projects/get?id=" + a.p, "/projects/budget?id=" + a.p, "/projects/cost?id=" + a.p, "/projects/report?id=" + a.p, "/assets/get?id=" + a.a, "/assets/documents/download?id=" + a.d, "/projects/compare?projectVersionA=1&projectVersionB=1&id1=" + a.p + "&id2=" + a.p} {
-		f.request(t, a, "GET", path, nil, 404)
-	}
-	f.request(t, a, "PUT", "/projects/update?id="+a.p, map[string]string{"name": "revoked"}, 404)
+	a := f.people[0]
+	payload := map[string]any{"name": "Anonymous create", "enterpriseId": a.e, "projectJson": frc04Document(a.e)}
+	created := frc04Request(t, f, person{}, "POST", "/projects", "anonymous-replay", payload, 200)
+	require.Equal(t, created, frc04Request(t, f, person{token: "invalid"}, "POST", "/projects", "anonymous-replay", payload, 200))
+	var actor string
+	require.NoError(t, db.Table("project_idempotency").Select("actor_id").Where("idempotency_key = ?", "anonymous-replay").Scan(&actor).Error)
+	require.Equal(t, "00000000-0000-0000-0000-000000000000", actor)
 }
 func newPostgresFixture(t *testing.T, db *gorm.DB, pipeline ...aa.DocumentPipeline) accessFixture {
 	c := context.Background()
@@ -114,7 +79,7 @@ func newPostgresFixture(t *testing.T, db *gorm.DB, pipeline ...aa.DocumentPipeli
 	ds := aa.NewDocumentService(docs, as, pipeline...)
 	budgets := bi.NewBudgetConfigRepository(db)
 	bs := ba.NewBudgetService(budgets, ps, budgets)
-	rs := ra.NewReportService(ps, bs, as)
+	rs := ra.NewReportService(ps, bs, ri.NewReportRepository(db), ru.RenderReport)
 	people := []person{}
 	for _, name := range []string{"A", "B"} {
 		u, t, e := us.Register(c, name+"@example.test", "fixture-password-only", name)
@@ -162,7 +127,7 @@ func newPostgresFixture(t *testing.T, db *gorm.DB, pipeline ...aa.DocumentPipeli
 	}
 	r := router.New()
 	require.NoError(t, app.registerHandlers(r))
-	h := middleware.NewAuthRequired(secret, publicAuthPaths, us).Process(r.Handler)
+	h := r.Handler
 	return accessFixture{people: people, publicAsset: public.ID(), publicDocument: publicDoc.ID(), h: h}
 }
 
@@ -187,6 +152,10 @@ func frc02TestDatabase(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	require.NotEmpty(t, files)
 	for _, file := range files {
+		// These fixtures provision their own sites; the default seed has a separate migration test.
+		if strings.Contains(file, "test_enterprise") {
+			continue
+		}
 		sql, err := os.ReadFile(file)
 		require.NoError(t, err)
 		require.NoError(t, tx.Exec(string(sql)).Error, file)

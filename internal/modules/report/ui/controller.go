@@ -2,80 +2,119 @@ package ui
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"strconv"
-
-	"github.com/valyala/fasthttp"
-
+	budget "github.com/fortis/backend/internal/modules/budget/domain"
+	project "github.com/fortis/backend/internal/modules/defense_project/domain"
+	"github.com/fortis/backend/internal/modules/report/application"
 	"github.com/fortis/backend/internal/modules/report/domain"
 	"github.com/fortis/backend/pkg/handlers"
+	"github.com/google/uuid"
+	"github.com/valyala/fasthttp"
+	"strconv"
 )
 
-// ReportServiceInterface — интерфейс сервиса отчёта для контроллера.
 type ReportServiceInterface interface {
-	GetReport(ctx context.Context, actorID string, projectID string, hideCost bool) (*domain.ReportPayload, error)
+	GetReport(context.Context, string, application.GetReportQuery) (*domain.IssuedReport, error)
 }
+type ReportController struct{ service ReportServiceInterface }
 
-// ReportController — контроллер для API отчёта GIS MVP.
-type ReportController struct {
-	service ReportServiceInterface
-}
-
-// NewReportController создаёт новый ReportController.
 func NewReportController(service ReportServiceInterface) *ReportController {
-	return &ReportController{
-		service: service,
-	}
+	return &ReportController{service}
 }
 
 // swagger:route GET /api/v1/projects/report api getReport
-// Получить отчёт GIS MVP для проекта
-//
-// Возвращает единый payload для построения отчёта: карту, объекты, слои,
-// типы, стоимость, ТТХ, режим скрытия стоимости.
-//
+// Выпустить отчёт фиксированной версии или открыть неизменяемый ранее выпущенный отчёт.
+// Стоимость скрывается отдельным безопасным DTO; доступ проверяется при каждом открытии.
 // Produces:
 //   - application/json
 //
 // Responses:
 //
-//	200: ReportResponse
-//	400: description: Bad Request — не указан ID проекта
-//	404: description: Not Found — проект не найден
-//	500: description: Internal Server Error
+//	200: PricedReportResponse
+//	400: description: Некорректные параметры выпуска или открытия
+//	404: description: Отчёт или версия недоступны
+//	503: description: Сохранённая версия алгоритма недоступна
 func (c *ReportController) Get(ctx *fasthttp.RequestCtx) {
-	projectID := string(ctx.QueryArgs().Peek("id"))
-	if projectID == "" {
-		handlers.ErrorHandler(ctx, "validation_error", "id query parameter is required", &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
+	bad := func(code, message string) { handlers.ErrorHandler(ctx, code, message, &handlers.ResponseBody{}, 400) }
+	args := ctx.QueryArgs()
+	seen := map[string]bool{}
+	invalid := false
+	args.VisitAll(func(k, v []byte) {
+		key := string(k)
+		if seen[key] {
+			invalid = true
+		}
+		seen[key] = true
+		switch key {
+		case "reportId", "id", "projectVersion", "hideCost", "mapView":
+		default:
+			invalid = true
+		}
+	})
+	if invalid {
+		bad("validation_error", "invalid or duplicate report query parameter")
 		return
 	}
-
-	hideCostStr := string(ctx.QueryArgs().Peek("hideCost"))
-	hideCost, _ := strconv.ParseBool(hideCostStr)
-
-	payload, err := c.service.GetReport(ctx, handlers.ActorID(ctx), projectID, hideCost)
+	q := application.GetReportQuery{}
+	if args.Has("reportId") {
+		if len(seen) != 1 {
+			bad("validation_error", "reportId cannot be combined with issuance parameters")
+			return
+		}
+		id, err := uuid.Parse(string(args.Peek("reportId")))
+		if err != nil {
+			bad("validation_error", "invalid reportId")
+			return
+		}
+		q.ReportID = id.String()
+	} else {
+		id, err := uuid.Parse(string(args.Peek("id")))
+		if err != nil {
+			bad("validation_error", "valid id is required")
+			return
+		}
+		if !args.Has("projectVersion") {
+			bad("version_required", "projectVersion is required")
+			return
+		}
+		version, err := strconv.Atoi(string(args.Peek("projectVersion")))
+		if err != nil || version <= 0 {
+			bad("validation_error", "projectVersion must be positive")
+			return
+		}
+		hidden := string(args.Peek("hideCost"))
+		if hidden != "true" && hidden != "false" {
+			bad("validation_error", "hideCost must be explicitly true or false")
+			return
+		}
+		view := "all"
+		if args.Has("mapView") {
+			view = string(args.Peek("mapView"))
+		}
+		key, err := domain.NewReportKey(id.String(), version, hidden == "true", view)
+		if err != nil {
+			bad("validation_error", err.Error())
+			return
+		}
+		q.Key = key
+	}
+	report, err := c.service.GetReport(ctx, handlers.ActorID(ctx), q)
 	if err != nil {
 		if handlers.AuthorizationError(ctx, err) {
 			return
 		}
 		switch {
-		case errors.Is(err, domain.ErrProjectNotFound):
-			handlers.ErrorHandler(ctx, "not_found", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusNotFound)
-		case errors.Is(err, domain.ErrInvalidProjectID):
-			handlers.ErrorHandler(ctx, "validation_error", err.Error(), &handlers.ResponseBody{}, fasthttp.StatusBadRequest)
+		case errors.Is(err, domain.ErrReportNotFound), errors.Is(err, project.ErrProjectNotFound), errors.Is(err, project.ErrRevisionNotFound):
+			handlers.ErrorHandler(ctx, "not_found", "report not found", &handlers.ResponseBody{}, 404)
+		case errors.Is(err, budget.ErrUnsupportedCalculationVersion):
+			handlers.ErrorHandler(ctx, "unsupported_calculation_version", "saved calculation version is unavailable", &handlers.ResponseBody{}, 503)
+		case errors.Is(err, domain.ErrInvalidSnapshot):
+			handlers.ErrorHandler(ctx, "invalid_report_snapshot", "saved geometry cannot be rendered safely", &handlers.ResponseBody{}, 422)
 		default:
-			handlers.ErrorHandler(ctx, "internal_error", "failed to get report", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
+			handlers.ErrorHandler(ctx, "internal_error", "failed to get report", &handlers.ResponseBody{}, 500)
 		}
 		return
 	}
-
-	resp := domainToReportResponse(payload)
-	respJSON, err := json.Marshal(resp)
-	if err != nil {
-		handlers.ErrorHandler(ctx, "internal_error", "failed to marshal response", &handlers.ResponseBody{}, fasthttp.StatusInternalServerError)
-		return
-	}
-
-	ctx.SetBody(respJSON)
+	ctx.SetContentType("application/json")
+	ctx.SetBodyString(report.Payload())
 }
